@@ -18,8 +18,15 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { findBrowser, headlessFlags } from './lib/browser.mjs';
+import {
+  CDP, sleep, waitForCdp,
+  cdpJson as cdpJsonShared,
+  openTarget as openCdpTarget
+} from './lib/cdp.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// 被测扩展的来源目录：默认仓库根目录；打包验证时用 ET_EXT_DIR 指向「解压后的商店包」
+const EXT_SOURCE = process.env.ET_EXT_DIR ? path.resolve(process.env.ET_EXT_DIR) : ROOT;
 const CDP_PORT = 9333;
 const HTTP_PORT = 8791;
 const ECHO_PORT = 8792;
@@ -30,8 +37,6 @@ function check(name, ok, detail) {
   results.push({ name, ok });
   console.log((ok ? '  ✔ ' : '  ✖ ') + name + (detail ? '   [' + detail + ']' : ''));
 }
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ---------------- 静态服务器（内容脚本不会注入 file:// 页面） ---------------- */
 
@@ -75,7 +80,8 @@ function prepareExtensionCopy() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'et-ext-'));
   const items = ['manifest.json', 'background.js', 'lib', 'content', 'popup', 'options', 'pdf', 'pdfjs', 'icons', 'assets'];
   for (const item of items) {
-    fs.cpSync(path.join(ROOT, item), path.join(dir, item), { recursive: true });
+    const src = path.join(EXT_SOURCE, item);
+    if (fs.existsSync(src)) fs.cpSync(src, path.join(dir, item), { recursive: true });
   }
   const manifestPath = path.join(dir, 'manifest.json');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -87,57 +93,8 @@ function prepareExtensionCopy() {
 
 /* ---------------- 极简 CDP 客户端 ---------------- */
 
-class CDP {
-  constructor(wsUrl) { this.wsUrl = wsUrl; this.id = 0; this.pending = new Map(); this.handlers = []; }
-
-  connect() {
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(this.wsUrl);
-      this.ws = ws;
-      ws.onmessage = (ev) => {
-        const msg = JSON.parse(ev.data);
-        if (msg.id && this.pending.has(msg.id)) {
-          const { resolve: res, reject: rej } = this.pending.get(msg.id);
-          this.pending.delete(msg.id);
-          msg.error ? rej(new Error(msg.error.message)) : res(msg.result);
-        } else if (msg.method) {
-          this.handlers.forEach((h) => h(msg));
-        }
-      };
-      ws.onopen = () => resolve();
-      ws.onerror = (e) => reject(new Error('WebSocket 连接失败: ' + (e.message || 'unknown')));
-    });
-  }
-
-  on(fn) { this.handlers.push(fn); }
-
-  send(method, params) {
-    const id = ++this.id;
-    this.ws.send(JSON.stringify({ id, method, params: params || {} }));
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
-  }
-
-  async evaluate(expression, contextId) {
-    const params = { expression, returnByValue: true, awaitPromise: true };
-    if (contextId) params.contextId = contextId;
-    const res = await this.send('Runtime.evaluate', params);
-    if (res.exceptionDetails) {
-      throw new Error('页面异常: ' + (res.exceptionDetails.exception?.description || res.exceptionDetails.text));
-    }
-    return res.result.value;
-  }
-
-  async mouseMove(x, y) {
-    await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0, clickCount: 0 });
-  }
-
-  close() { try { this.ws.close(); } catch (e) { /* 忽略 */ } }
-}
-
-async function cdpJson(pathname, init) {
-  const res = await fetch('http://127.0.0.1:' + CDP_PORT + pathname, init);
-  return res.json();
-}
+// CDP 客户端与常用助手来自共享模块（tools/lib/cdp.mjs），这里只绑定本文件使用的端口
+const cdpJson = (pathname, init) => cdpJsonShared(CDP_PORT, pathname, init);
 
 /* ---------------- 扩展 ID ---------------- */
 
@@ -157,7 +114,7 @@ async function main() {
     process.exit(2);
   }
   console.log('浏览器：' + browser);
-  console.log('扩展目录：' + ROOT + '\n');
+  console.log('扩展目录：' + EXT_SOURCE + (EXT_SOURCE === ROOT ? '' : '（ET_EXT_DIR 指定：商店打包产物）') + '\n');
 
   const server = await startServer();
   const echoServer = await startOriginEchoServer();
@@ -191,12 +148,7 @@ async function main() {
 
   try {
     // 等待 CDP 就绪（CI 冷启动可能较慢；进程提前退出则立刻报错并打印浏览器输出）
-    let ready = false;
-    for (let i = 0; i < 120 && !ready; i++) {
-      await sleep(500);
-      if (child.exitCode !== null) break;
-      try { await cdpJson('/json/version'); ready = true; } catch (e) { /* 继续等 */ }
-    }
+    const ready = await waitForCdp(CDP_PORT, { child });
     if (!ready) {
       console.error('浏览器未能启动（exitCode=' + child.exitCode + '）。浏览器输出：');
       console.error(browserLog.slice(-15).join('\n') || '(无输出)');
@@ -308,16 +260,7 @@ async function main() {
     if (!extId) extId = unpackedId(ROOT);
     check('解出扩展 ID', !!extId, extId);
 
-    const openTarget = async (url) => {
-      await cdpJson('/json/new?' + encodeURIComponent(url), { method: 'PUT' }).catch(() => null);
-      for (let i = 0; i < 40; i++) {
-        await sleep(300);
-        const l = await cdpJson('/json/list');
-        const t = l.find((x) => x.url === url);
-        if (t) return t;
-      }
-      return null;
-    };
+    const openTarget = (url) => openCdpTarget(CDP_PORT, url);
 
     const CARD_STATE_JS = `(() => {
       const host = document.querySelector('[data-easy-translator="card"]');

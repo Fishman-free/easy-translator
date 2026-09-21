@@ -26,6 +26,15 @@
 
 ## 安装
 
+### 从商店安装（推荐）
+
+Microsoft Edge 商店：**提交审核中**，上架后这里会补上商店链接。
+
+> 打包与提交所需的全部内容（可直接复制的商店文案、逐项权限理由、给审核员的测试说明）
+> 见 [`store/SUBMISSION.md`](store/SUBMISSION.md)；隐私声明见 [`PRIVACY.md`](PRIVACY.md)。
+
+### 从源码加载（开发者模式）
+
 1. 克隆或下载本仓库
 2. Chrome / Edge → `chrome://extensions` → 打开「开发者模式」→「加载已解压的扩展程序」→ 选择本目录
 3. 打开任意英文网页，把鼠标停在一个单词上约 5 秒
@@ -90,10 +99,16 @@ npm run verify          # 一键：结构校验 + 单元测试 + 端到端（CI 
 npm run check           # 结构校验：manifest 合法性、引用文件存在性、首方 JS 语法、关键资源非空
 npm test                # 单元测试（21 项：英文判定 / 取词边界 / 响应归一化 / 模型输出容错）
 npm run test:e2e        # 端到端：headless Edge/Chrome 真机加载扩展 + CDP 派发真实鼠标事件
-npm run screenshot      # 真机截图（docs/screenshot-*.png）
+npm run screenshot      # 开发用真机截图（docs/screenshot-*.png）
 
-python tools/make-assets.py     # 重新生成图标与视觉测试图
-python tools/make-test-pdf.py   # 生成 PDF 测试夹具
+npm run build:store         # 打包成可提交商店的 zip（自建 ZIP 写入器，避免反斜杠路径问题）
+npm run build:store -- --smoke   # 额外把「解压后的这份包」真机跑一遍端到端
+npm run store:screenshots   # 生成商店截图（1280x800，会从 PNG 文件头校验真实尺寸）
+
+python tools/make-store-assets.py   # 商店图标 300x300 + 宣传图 440x280 / 1400x560
+python tools/make-assets.py         # 扩展图标与视觉测试图
+python tools/make-test-pdf.py       # PDF 测试夹具
+python tools/make-demo-pdf.py       # 商店截图用的演示 PDF
 ```
 
 > `npm run verify:all` 另有 `--no-e2e`（跳过真机测试，秒级自查）与 `--no-ci`（离线时跳过远端查询）。
@@ -140,7 +155,14 @@ popup/ options/        弹窗与设置页
 pdf/                   内置 PDF 阅读器（pdf.js）
 pdfjs/                 pdf.js 运行时（build / cmaps / standard_fonts）
 tests/                 单元测试 + 夹具 + 手动测试页
-tools/                 图标生成、PDF 夹具生成、E2E
+tools/                 构建与验证脚本
+  lib/browser.mjs      浏览器发现（跨平台）与无头启动参数
+  lib/cdp.mjs          极简 CDP 客户端（e2e / 截图共用）
+  e2e.mjs              真机端到端（支持 ET_EXT_DIR 指向商店包）
+  verify-all.mjs       本地总验证入口
+  build-store.mjs      商店打包（自建 ZIP 写入器 + 结构自检 + 可选真机冒烟）
+  store-screenshots.mjs 商店截图（1280x800，校验真实尺寸）
+store/                 上架材料：SUBMISSION.md、图标/宣传图、demo 页与 demo PDF（zip 产物不入库）
 ```
 
 ## 设计取舍
@@ -156,6 +178,13 @@ tools/                 图标生成、PDF 夹具生成、E2E
 - 网页/PDF 取词：只把**单词**发给词典接口（或本机模型）
 - 图片取词：只把**光标周边的裁剪图**发给本机视觉模型，不经任何第三方服务器
 - 缓存只存本机 `chrome.storage.local`，可在设置页一键清空
+
+完整声明见 [`PRIVACY.md`](PRIVACY.md)。
+
+## 上架商店
+
+打包、商店文案、权限理由、审核测试说明与素材规格都在 [`store/SUBMISSION.md`](store/SUBMISSION.md)。
+素材与截图可由 `npm run build:store`、`npm run store:screenshots`、`python tools/make-store-assets.py` 直接再生。
 
 ## 许可
 

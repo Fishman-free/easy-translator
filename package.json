@@ -15,7 +15,9 @@
     "test:e2e": "node tools/e2e.mjs",
     "screenshot": "node tools/screenshot.mjs",
     "verify": "npm run check && npm test && npm run test:e2e",
-    "verify:all": "node tools/verify-all.mjs"
+    "verify:all": "node tools/verify-all.mjs",
+    "build:store": "node tools/build-store.mjs",
+    "store:screenshots": "node tools/store-screenshots.mjs"
   },
   "engines": {
     "node": ">=20"

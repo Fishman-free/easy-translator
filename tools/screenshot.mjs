@@ -1,103 +1,84 @@
 /**
- * Easy Translator — 真机截图工具
+ * Easy Translator — 开发用真机截图（加载仓库里的扩展，截图到 docs/）
  *
- * 加载扩展 → 打开测试页 → 悬停英文单词 → 截屏；再打开内置 PDF 阅读器截图。
- * 产物：docs/screenshot-web.png、docs/screenshot-pdf.png
+ *   npm run screenshot
  *
- * 用法： node tools/screenshot.mjs
+ * 商店上架素材请用 tools/store-screenshots.mjs（1280x800，输出到 store/screenshots/）。
  */
-import { spawn } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { findBrowser, headlessFlags } from './lib/browser.mjs';
+import { CDP, cdpJson, openTarget, waitForCdp, sleep } from './lib/cdp.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const BROWSER = findBrowser();
-
 const CDP_PORT = 9334;
 const HTTP_PORT = 8792;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-class CDP {
-  constructor(wsUrl) { this.wsUrl = wsUrl; this.id = 0; this.pending = new Map(); }
-  connect() {
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(this.wsUrl);
-      this.ws = ws;
-      ws.onmessage = (ev) => {
-        const msg = JSON.parse(ev.data);
-        if (msg.id && this.pending.has(msg.id)) {
-          const { resolve: res, reject: rej } = this.pending.get(msg.id);
-          this.pending.delete(msg.id);
-          msg.error ? rej(new Error(msg.error.message)) : res(msg.result);
-        }
-      };
-      ws.onopen = resolve;
-      ws.onerror = (e) => reject(new Error('ws error ' + (e.message || '')));
-    });
-  }
-  send(method, params) {
-    const id = ++this.id;
-    this.ws.send(JSON.stringify({ id, method, params: params || {} }));
-    return new Promise((res, rej) => this.pending.set(id, { resolve: res, reject: rej }));
-  }
-  async evaluate(expression) {
-    const r = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-    return r.result.value;
-  }
-  async mouseMove(x, y) {
-    await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0, clickCount: 0 });
-  }
-  close() { try { this.ws.close(); } catch (e) { /* 忽略 */ } }
+const MIME = {
+  '.html': 'text/html', '.png': 'image/png', '.pdf': 'application/pdf',
+  '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.mjs': 'text/javascript'
+};
+
+/** 未解压扩展的 ID 由绝对路径推导（仅作兜底；优先从 CDP 目标里读真实 ID） */
+function unpackedId(absPath) {
+  const hash = crypto.createHash('sha256').update(absPath).digest();
+  let id = '';
+  for (let i = 0; i < 16; i++) id += String.fromCharCode(97 + (hash[i] >> 4)) + String.fromCharCode(97 + (hash[i] & 0xf));
+  return id;
 }
 
-const j = (p, init) => fetch('http://127.0.0.1:' + CDP_PORT + p, init).then((r) => r.json());
-
-async function main() {
-  const mime = { '.html': 'text/html', '.png': 'image/png', '.pdf': 'application/pdf', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.mjs': 'text/javascript' };
+function startServer() {
   const server = http.createServer((req, res) => {
     const file = path.join(ROOT, decodeURIComponent(req.url.split('?')[0]));
-    if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
-    res.writeHead(200, { 'Content-Type': mime[path.extname(file)] || 'application/octet-stream', 'Access-Control-Allow-Origin': '*' });
+    if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+      res.writeHead(404); res.end(); return;
+    }
+    res.writeHead(200, {
+      'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
+      'Access-Control-Allow-Origin': '*'
+    });
     fs.createReadStream(file).pipe(res);
   });
-  await new Promise((r) => server.listen(HTTP_PORT, '127.0.0.1', r));
+  return new Promise((resolve) => server.listen(HTTP_PORT, '127.0.0.1', () => resolve(server)));
+}
 
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'et-shot-'));
-  if (!BROWSER) {
+async function main() {
+  const browser = findBrowser();
+  if (!browser) {
     console.error('找不到 Chromium 系浏览器（可用 ET_BROWSER 指定路径）');
     process.exit(2);
   }
-  const child = spawn(BROWSER, headlessFlags({
+
+  const server = await startServer();
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'et-shot-'));
+  const child = spawn(browser, headlessFlags({
     remoteDebuggingPort: CDP_PORT,
     extensionDir: ROOT,
     windowSize: '1280,860'
-  }).concat(['--user-data-dir=' + profile, 'about:blank']), { stdio: 'ignore' });
+  }).concat(['--user-data-dir=' + profile, 'about:blank']), { stdio: ['ignore', 'pipe', 'pipe'] });
+
+  const logs = [];
+  const collect = (b) => String(b).split('\n').forEach((l) => l.trim() && logs.push(l.trim()));
+  child.stdout.on('data', collect);
+  child.stderr.on('data', collect);
 
   const docs = path.join(ROOT, 'docs');
   fs.mkdirSync(docs, { recursive: true });
 
   try {
-    for (let i = 0; i < 60; i++) { await sleep(500); try { await j('/json/version'); break; } catch (e) { /* 继续 */ } }
-
-    const open = async (url) => {
-      await j('/json/new?' + encodeURIComponent(url), { method: 'PUT' }).catch(() => null);
-      for (let i = 0; i < 40; i++) {
-        await sleep(300);
-        const l = await j('/json/list');
-        const t = l.find((x) => x.url === url);
-        if (t) return t;
-      }
-      return null;
-    };
+    if (!await waitForCdp(CDP_PORT, { child })) {
+      console.error('浏览器未就绪：\n' + logs.slice(-12).join('\n'));
+      process.exit(1);
+    }
 
     /* —— 网页卡片 —— */
     const webUrl = 'http://127.0.0.1:' + HTTP_PORT + '/tests/manual-test.html';
-    const webTarget = await open(webUrl);
+    const webTarget = await openTarget(CDP_PORT, webUrl);
     const page = new CDP(webTarget.webSocketDebuggerUrl);
     await page.connect();
     await page.send('Runtime.enable');
@@ -125,27 +106,19 @@ async function main() {
     page.close();
 
     /* —— PDF 阅读器卡片 —— */
-    const list = await j('/json/list');
+    const list = await cdpJson(CDP_PORT, '/json/list');
     let extId = null;
     list.forEach((t) => {
       const m = /^chrome-extension:\/\/([a-p]+)\/(.*)$/.exec(t.url || '');
       // 只认我们自己的目标（background service worker），避免误取浏览器内置扩展的 ID
       if (m && !extId && /background\.js$/.test(m[2] || '')) extId = m[1];
     });
-    console.log('解析到的扩展 ID：' + (extId || '(未取到，将用路径推导)'));
-    if (!extId) {
-      console.log('当前目标：' + list.map((t) => t.type + ' ' + t.url).join(' | '));
-    }
-    if (!extId) {
-      // 未解压扩展的 ID 由绝对路径的 SHA-256 推导（前 16 字节映射到 a–p）
-      const hash = crypto.createHash('sha256').update(ROOT).digest();
-      extId = '';
-      for (let i = 0; i < 16; i++) extId += String.fromCharCode(97 + (hash[i] >> 4)) + String.fromCharCode(97 + (hash[i] & 0xf));
-      console.log('未从目标列表取到扩展 ID，改用路径推导：' + extId);
-    }
+    console.log('解析到的扩展 ID：' + (extId || '(未取到，用路径推导)'));
+    if (!extId) extId = unpackedId(ROOT);
+
     const pdfUrl = 'chrome-extension://' + extId + '/pdf/viewer.html?file=' +
       encodeURIComponent('http://127.0.0.1:' + HTTP_PORT + '/tests/fixtures/sample.pdf');
-    const pdfTarget = await open(pdfUrl);
+    const pdfTarget = await openTarget(CDP_PORT, pdfUrl);
     if (pdfTarget) {
       const pdf = new CDP(pdfTarget.webSocketDebuggerUrl);
       await pdf.connect();

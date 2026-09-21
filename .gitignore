@@ -6,6 +6,9 @@ node_modules/
 *.tgz
 dist/
 
+# 商店打包产物（可由 npm run build:store 随时再生，不进版本库）
+store/*.zip
+
 # 系统与编辑器
 .DS_Store
 Thumbs.db
