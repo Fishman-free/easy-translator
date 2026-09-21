@@ -13,13 +13,10 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { findBrowser, headlessFlags } from './lib/browser.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const EDGE = [
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-].find((p) => fs.existsSync(p));
+const BROWSER = findBrowser();
 
 const CDP_PORT = 9334;
 const HTTP_PORT = 8792;
@@ -71,12 +68,15 @@ async function main() {
   await new Promise((r) => server.listen(HTTP_PORT, '127.0.0.1', r));
 
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'et-shot-'));
-  const child = spawn(EDGE, [
-    '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-    '--user-data-dir=' + profile, '--remote-debugging-port=' + CDP_PORT,
-    '--disable-extensions-except=' + ROOT, '--load-extension=' + ROOT,
-    '--window-size=1280,860', 'about:blank'
-  ], { stdio: 'ignore' });
+  if (!BROWSER) {
+    console.error('找不到 Chromium 系浏览器（可用 ET_BROWSER 指定路径）');
+    process.exit(2);
+  }
+  const child = spawn(BROWSER, headlessFlags({
+    remoteDebuggingPort: CDP_PORT,
+    extensionDir: ROOT,
+    windowSize: '1280,860'
+  }).concat(['--user-data-dir=' + profile, 'about:blank']), { stdio: 'ignore' });
 
   const docs = path.join(ROOT, 'docs');
   fs.mkdirSync(docs, { recursive: true });

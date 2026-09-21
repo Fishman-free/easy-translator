@@ -1,0 +1,35 @@
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 列出可用浏览器（诊断用）
+        run: |
+          for b in google-chrome google-chrome-stable microsoft-edge microsoft-edge-stable chromium chromium-browser; do
+            p=$(command -v "$b" || true)
+            if [ -n "$p" ]; then echo "found: $b -> $p"; fi
+          done
+
+      - name: 结构校验（manifest / 引用文件 / 语法 / 关键资源）
+        run: npm run check
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 端到端（headless 浏览器 + CDP 真实鼠标事件）
+        run: npm run test:e2e

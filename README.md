@@ -1,5 +1,7 @@
 # Easy Translator · 悬停查词
 
+[![verify](https://github.com/Fishman-free/easy-translator/actions/workflows/verify.yml/badge.svg)](https://github.com/Fishman-free/easy-translator/actions/workflows/verify.yml)
+
 鼠标在英文单词上停留约 **5 秒**，自动弹出卡片：中文释义、英美音标、词性、双语例句、发音。
 
 ![网页取词效果](docs/screenshot-web.png)
@@ -80,11 +82,18 @@ Chrome 内置 PDF 阅读器无法被注入，因此本扩展内置了一个基�
 ## 开发
 
 ```bash
-node --test tests/            # 单元测试（21 项：英文判定 / 取词边界 / 响应归一化 / 模型输出容错）
-node tools/e2e.mjs            # 端到端：headless Edge 真机加载扩展 + CDP 派发真实鼠标事件
-python tools/make-assets.py   # 重新生成图标与视觉测试图
-python tools/make-test-pdf.py # 生成 PDF 测试夹具
+npm run verify          # 一键：结构校验 + 单元测试 + 端到端（真机 headless 浏览器）
+npm run check           # 结构校验：manifest 合法性、引用文件存在性、首方 JS 语法、关键资源非空
+npm test                # 单元测试（21 项：英文判定 / 取词边界 / 响应归一化 / 模型输出容错）
+npm run test:e2e        # 端到端：headless Edge/Chrome 真机加载扩展 + CDP 派发真实鼠标事件
+npm run screenshot      # 真机截图（docs/screenshot-*.png）
+
+python tools/make-assets.py     # 重新生成图标与视觉测试图
+python tools/make-test-pdf.py   # 生成 PDF 测试夹具
 ```
+
+> 找不到浏览器时可用 `ET_BROWSER=/path/to/chrome npm run test:e2e` 显式指定；
+> 浏览器发现顺序见 `tools/lib/browser.mjs`（Windows / macOS / Linux 均已覆盖）。
 
 E2E 覆盖的场景（全部通过后才算可交付）：
 

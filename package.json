@@ -1,0 +1,22 @@
+{
+  "name": "easy-translator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "鼠标悬停英文单词约 5 秒即弹出中文释义、音标、词性与例句的轻量浏览器扩展（MV3）",
+  "license": "MIT",
+  "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Fishman-free/easy-translator.git"
+  },
+  "scripts": {
+    "check": "node tools/check-structure.mjs",
+    "test": "node --test tests/normalize.test.mjs",
+    "test:e2e": "node tools/e2e.mjs",
+    "screenshot": "node tools/screenshot.mjs",
+    "verify": "npm run check && npm test && npm run test:e2e"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

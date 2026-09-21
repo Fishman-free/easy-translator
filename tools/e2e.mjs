@@ -17,14 +17,9 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { findBrowser, headlessFlags } from './lib/browser.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const EDGE_CANDIDATES = [
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
-];
 const CDP_PORT = 9333;
 const HTTP_PORT = 8791;
 const DWELL_WAIT_MS = 8500;   // 触发时长(5s) + 查询与渲染余量
@@ -122,28 +117,22 @@ function unpackedId(absPath) {
 /* ---------------- 主流程 ---------------- */
 
 async function main() {
-  const edge = EDGE_CANDIDATES.find((p) => fs.existsSync(p));
-  if (!edge) { console.error('找不到 Edge/Chrome 可执行文件'); process.exit(2); }
-  console.log('浏览器：' + edge);
+  const browser = findBrowser();
+  if (!browser) {
+    console.error('找不到 Chromium 系浏览器（Edge/Chrome/Chromium）。可用环境变量 ET_BROWSER 显式指定路径。');
+    process.exit(2);
+  }
+  console.log('浏览器：' + browser);
   console.log('扩展目录：' + ROOT + '\n');
 
   const server = await startServer();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'et-e2e-'));
   const pageUrl = 'http://127.0.0.1:' + HTTP_PORT + '/tests/manual-test.html';
 
-  const child = spawn(edge, [
-    '--headless=new',
-    '--disable-gpu',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--disable-component-update',
-    '--disable-background-networking',
-    '--user-data-dir=' + profile,
-    '--remote-debugging-port=' + CDP_PORT,
-    '--disable-extensions-except=' + ROOT,
-    '--load-extension=' + ROOT,
-    'about:blank'
-  ], { stdio: 'ignore' });
+  const child = spawn(browser, headlessFlags({
+    remoteDebuggingPort: CDP_PORT,
+    extensionDir: ROOT
+  }).concat(['about:blank']), { stdio: 'ignore' });
 
   const cleanup = () => {
     try { child.kill(); } catch (e) { /* 忽略 */ }
@@ -342,46 +331,51 @@ async function main() {
       pdf.close();
     }
 
-    /* —— 场景 6：小模型链路（需本机运行 Ollama） —— */
-    const ollamaUp = await fetch('http://127.0.0.1:11434/api/version').then((r) => r.ok).catch(() => false);
-    if (!ollamaUp) {
-      console.log('  ⚠ 跳过小模型链路测试：11434 端口没有 Ollama');
-    } else if (globalThis.__optionsWs) {
+    /* —— 场景 6：DNR 规则 + 小模型链路 —— */
+    if (globalThis.__optionsWs) {
       const opts = new CDP(globalThis.__optionsWs);
       await opts.connect();
       await opts.send('Runtime.enable');
 
+      // 6a. DNR 规则必须始终注册成功：它是「免配置访问本机模型」的前提（CI 上也要验）
       const rules = await opts.evaluate(
         'chrome.declarativeNetRequest.getDynamicRules().then(r => r.map(x => ({ id: x.id, headers: (x.action.requestHeaders || []).map(h => h.header) })))'
       ).catch(() => null);
       check('已注册「剥离 Origin」的 DNR 规则', Array.isArray(rules) && rules.length >= 2, JSON.stringify(rules));
 
-      await opts.evaluate(`(async () => {
-        const cur = (await chrome.storage.local.get('settings')).settings || {};
-        const s = Object.assign({}, cur, { engine: 'local' });
-        s.model = Object.assign({}, cur.model, { enabled: true, baseUrl: 'http://127.0.0.1:11434/v1', textModel: 'qwen2.5:1.5b', timeoutMs: 90000 });
-        await chrome.storage.local.set({ settings: s });
-        return true;
-      })()`).catch(() => null);
-
-      const t0 = Date.now();
-      const res = await opts.evaluate("chrome.runtime.sendMessage({type:'test-text-model', word:'hello'})").catch((e) => ({ ok: false, error: e.message }));
-      if (res && res.ok) {
-        const first = (res.data && res.data.poses && res.data.poses[0] && res.data.poses[0].meaning) || '';
-        check('小模型查词链路打通（浏览器内 200，说明 DNR 生效）', true,
-          Math.round((Date.now() - t0) / 1000) + 's · ' + first.slice(0, 24));
+      // 6b. 小模型查词链路：需要本机 Ollama，缺失则跳过（不判失败）
+      const ollamaUp = await fetch('http://127.0.0.1:11434/api/version').then((r) => r.ok).catch(() => false);
+      if (!ollamaUp) {
+        console.log('  ⚠ 跳过小模型查词链路测试：本机 11434 端口没有 Ollama');
       } else {
-        check('小模型查词链路打通（浏览器内 200，说明 DNR 生效）', false, String(res && res.error));
-      }
+        await opts.evaluate(`(async () => {
+          const cur = (await chrome.storage.local.get('settings')).settings || {};
+          const s = Object.assign({}, cur, { engine: 'local' });
+          s.model = Object.assign({}, cur.model, { enabled: true, baseUrl: 'http://127.0.0.1:11434/v1', textModel: 'qwen2.5:1.5b', timeoutMs: 90000 });
+          await chrome.storage.local.set({ settings: s });
+          return true;
+        })()`).catch(() => null);
 
-      // 还原设置，避免影响后续手动使用
-      await opts.evaluate(`(async () => {
-        const cur = (await chrome.storage.local.get('settings')).settings || {};
-        const s = Object.assign({}, cur, { engine: 'auto' });
-        s.model = Object.assign({}, cur.model, { enabled: false });
-        await chrome.storage.local.set({ settings: s });
-        return true;
-      })()`).catch(() => null);
+        const t0 = Date.now();
+        const res = await opts.evaluate("chrome.runtime.sendMessage({type:'test-text-model', word:'hello'})")
+          .catch((e) => ({ ok: false, error: e.message }));
+        if (res && res.ok) {
+          const first = (res.data && res.data.poses && res.data.poses[0] && res.data.poses[0].meaning) || '';
+          check('小模型查词链路打通（浏览器内 200，说明 DNR 生效）', true,
+            Math.round((Date.now() - t0) / 1000) + 's · ' + first.slice(0, 24));
+        } else {
+          check('小模型查词链路打通（浏览器内 200，说明 DNR 生效）', false, String(res && res.error));
+        }
+
+        // 还原设置，避免影响后续手动使用
+        await opts.evaluate(`(async () => {
+          const cur = (await chrome.storage.local.get('settings')).settings || {};
+          const s = Object.assign({}, cur, { engine: 'auto' });
+          s.model = Object.assign({}, cur.model, { enabled: false });
+          await chrome.storage.local.set({ settings: s });
+          return true;
+        })()`).catch(() => null);
+      }
       opts.close();
     }
   } finally {
