@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Easy Translator 测试页</title>
+<style>
+  body { font: 16px/2.1 system-ui, "Microsoft YaHei", sans-serif; max-width: 760px; margin: 40px auto; padding: 0 20px; color: #1f2937; }
+  h1 { font-size: 20px; }
+  section { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin: 14px 0; }
+  h2 { font-size: 13px; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; margin: 0 0 8px; }
+  .blank { height: 90px; border-radius: 8px;
+    background: repeating-linear-gradient(45deg, #f9fafb, #f9fafb 10px, #f3f4f6 10px, #f3f4f6 20px); }
+  img { max-width: 100%; }
+  .tip { color: #6b7280; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h1>Easy Translator · 悬停取词测试页</h1>
+  <p class="tip">在每个区域驻留鼠标约 5 秒，观察是否符合预期。</p>
+
+  <section>
+    <h2>① 英文段落（应弹出释义卡片）</h2>
+    <p id="en">The <span id="en-word">serendipity</span> of a good dictionary is that it rewards curiosity.</p>
+  </section>
+
+  <section>
+    <h2>② 中文段落（不应弹窗）</h2>
+    <p id="cn">这是一段中文文字，鼠标停留在这里不应该出现任何弹窗。</p>
+  </section>
+
+  <section>
+    <h2>③ 空白区域（不应弹窗）</h2>
+    <div class="blank" id="blank"></div>
+  </section>
+
+  <section>
+    <h2>④ 图片中的英文（需授权 + 本地视觉模型）</h2>
+    <img id="img-en" src="../assets/vision-test.png" alt="Hello">
+    <p class="tip">需在扩展弹窗中授予「所有网站」权限，并配置视觉模型（如 qwen2.5vl:3b）。</p>
+  </section>
+</body>
+</html>

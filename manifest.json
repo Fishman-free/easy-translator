@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Easy Translator — 悬停查词",
+  "version": "1.0.0",
+  "description": "鼠标悬停英文单词约 5 秒，自动弹出中文释义、音标、词性与例句。支持本地小模型（Ollama）与在线词典双引擎，轻量零依赖。",
+  "minimum_chrome_version": "110",
+  "permissions": ["storage", "activeTab", "webRequest", "declarativeNetRequestWithHostAccess"],
+  "host_permissions": [
+    "https://dict.youdao.com/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "lib/settings-core.js",
+        "lib/normalize.js",
+        "content/hover-core.js",
+        "content/content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content/card.css"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "optional_host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Easy Translator",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

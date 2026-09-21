@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Easy Translator · PDF 阅读器</title>
+<style>
+  :root {
+    --bar-h: 44px;
+    --bg: #eceef1;
+    --bar-bg: #ffffff;
+    --fg: #1f2937;
+    --muted: #6b7280;
+    --line: rgba(15, 23, 42, 0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181f;
+      --bar-bg: #1e2430;
+      --fg: #dbe2ea;
+      --muted: #94a3b8;
+      --line: rgba(148, 163, 184, 0.22);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+
+  .bar {
+    position: fixed; top: 0; left: 0; right: 0; height: var(--bar-h); z-index: 100;
+    display: flex; align-items: center; gap: 8px; padding: 0 12px;
+    background: var(--bar-bg); border-bottom: 1px solid var(--line);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+  }
+  .bar .brand { font-weight: 700; margin-right: 6px; white-space: nowrap; }
+  .bar .brand span { color: #4f46e5; }
+  .bar .spacer { flex: 1; }
+  .bar button, .bar input[type="number"] {
+    font: inherit; color: inherit; background: transparent;
+    border: 1px solid var(--line); border-radius: 7px; padding: 4px 9px; cursor: pointer;
+  }
+  .bar button:hover { border-color: #4f46e5; color: #4f46e5; }
+  .bar input[type="number"] { width: 58px; text-align: center; cursor: text; }
+  .bar .status { color: var(--muted); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; max-width: 42vw; }
+  .bar .hint { color: #4f46e5; }
+
+  #pages { padding: calc(var(--bar-h) + 18px) 0 60px; }
+
+  .page {
+    position: relative; margin: 0 auto 18px; background: #fff;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.18);
+  }
+  .page canvas { display: block; }
+  .page .placeholder {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; color: #9ca3af; font-size: 12px;
+  }
+
+  /* —— PDF.js 文本层（精简自官方 text_layer_builder.css）—— */
+  .textLayer {
+    position: absolute; text-align: initial; inset: 0; overflow: clip;
+    opacity: 1; line-height: 1; text-size-adjust: none; forced-color-adjust: none;
+    transform-origin: 0 0; caret-color: CanvasText; z-index: 0;
+  }
+  .textLayer :is(span, br) {
+    color: transparent; position: absolute; white-space: pre; cursor: text;
+    transform-origin: 0% 0%;
+  }
+  .textLayer span.markedContent { top: 0; height: 0; }
+  .textLayer ::selection { background: rgba(79, 70, 229, 0.28); }
+  .textLayer br::selection { background: transparent; }
+  .textLayer .endOfContent {
+    display: block; position: absolute; inset: 100% 0 0; z-index: -1;
+    cursor: default; user-select: none;
+  }
+  .textLayer.selecting .endOfContent { top: 0; }
+
+  .empty {
+    max-width: 560px; margin: 90px auto; padding: 26px 30px; text-align: center;
+    background: var(--bar-bg); border: 1px solid var(--line); border-radius: 12px;
+    color: var(--muted); line-height: 1.9;
+  }
+  .empty h1 { margin: 0 0 10px; font-size: 17px; color: var(--fg); }
+  .empty code { background: rgba(79, 70, 229, 0.1); padding: 1px 5px; border-radius: 5px; color: #4f46e5; }
+  .drop-active { outline: 3px dashed #4f46e5; outline-offset: -8px; }
+</style>
+</head>
+<body>
+  <header class="bar">
+    <span class="brand">Easy&nbsp;<span>Translator</span>&nbsp;阅读器</span>
+    <button id="prev" title="上一页">‹</button>
+    <input id="pageInput" type="number" min="1" value="1" title="跳转页码">
+    <span id="pageCount" style="color:var(--muted)">/ -</span>
+    <button id="next" title="下一页">›</button>
+    <button id="zoomOut" title="缩小">−</button>
+    <span id="zoomLabel" style="color:var(--muted);width:44px;text-align:center">100%</span>
+    <button id="zoomIn" title="放大">+</button>
+    <button id="openLocal" title="打开本地 PDF">打开本地文件</button>
+    <input id="fileInput" type="file" accept="application/pdf,.pdf" hidden>
+    <span class="spacer"></span>
+    <span class="status" id="status"></span>
+  </header>
+
+  <main id="pages">
+    <div class="empty" id="empty">
+      <h1>Easy Translator PDF 阅读器</h1>
+      <div>在此页面中把鼠标停留在一个英文单词上约 5 秒，即可看到中文释义。</div>
+      <div style="margin-top:8px">把 <code>PDF 文件</code> 拖到窗口任意位置，或点击右上角「打开本地文件」。</div>
+    </div>
+  </main>
+
+  <script src="../lib/settings-core.js"></script>
+  <script src="../lib/normalize.js"></script>
+  <script src="../content/hover-core.js"></script>
+  <script type="module" src="./viewer.js"></script>
+</body>
+</html>

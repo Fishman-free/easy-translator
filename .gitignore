@@ -1,0 +1,14 @@
+# 开发过程中的临时探针与调试脚本，不随扩展发布
+_probe/
+
+# 依赖与构建产物
+node_modules/
+*.tgz
+dist/
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

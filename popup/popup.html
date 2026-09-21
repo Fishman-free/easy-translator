@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="head">
+    <div class="brand">Easy <span>Translator</span></div>
+    <label class="switch" title="开启 / 关闭悬停查词">
+      <input type="checkbox" id="enabled">
+      <span class="track"><span class="knob"></span></span>
+    </label>
+  </header>
+
+  <section class="card">
+    <div class="row">
+      <span class="label">触发时长</span>
+      <div class="grow slider">
+        <input type="range" id="dwell" min="2" max="10" step="1">
+        <output id="dwellVal">5 秒</output>
+      </div>
+    </div>
+    <div class="row">
+      <span class="label">查词引擎</span>
+      <select id="engine" class="grow">
+        <option value="auto">自动（小模型优先，失败回退在线）</option>
+        <option value="online">仅在线词典（有道）</option>
+        <option value="local">仅本地小模型</option>
+      </select>
+    </div>
+    <div class="row">
+      <span class="label">图片取词</span>
+      <div class="grow inline">
+        <label class="mini-switch"><input type="checkbox" id="imageOcr"> <span>开启</span></label>
+        <span class="muted" id="visionModelName"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="permCard">
+    <div class="row between">
+      <span class="label">图片 / PDF 增强</span>
+      <button class="btn primary" id="grant">授权</button>
+    </div>
+    <div class="note" id="permNote">未授权：无法截屏识别图片中的文字，也无法读取跨站 PDF。</div>
+  </section>
+
+  <section class="card hidden" id="pdfCard">
+    <div class="row between">
+      <span class="label">检测到 PDF 页面</span>
+      <button class="btn" id="openPdf">用增强阅读器打开</button>
+    </div>
+    <div class="note">Chrome 内置 PDF 阅读器无法被扩展注入，使用内置阅读器即可悬停取词。</div>
+  </section>
+
+  <section class="card">
+    <div class="row between">
+      <span class="label" id="cacheInfo">缓存 —</span>
+      <div class="inline">
+        <button class="btn" id="clearCache">清空</button>
+        <a class="btn link" id="openOptions" href="#">设置</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot" id="footNote"></div>
+
+  <script src="../lib/settings-core.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

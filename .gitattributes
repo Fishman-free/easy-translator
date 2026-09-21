@@ -1,0 +1,9 @@
+# 统一以 LF 存储文本文件（Windows 检出时也不会污染 pdf.js 之类的第三方产物）
+* text=auto eol=lf
+
+# 二进制资源不做换行符处理
+*.png binary
+*.jpg binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

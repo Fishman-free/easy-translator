@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Easy Translator 设置</title>
+<link rel="stylesheet" href="options.css">
+</head>
+<body>
+<main>
+  <h1>Easy <span>Translator</span> 设置</h1>
+
+  <!-- 通用 -->
+  <section class="card">
+    <h2>通用</h2>
+    <div class="row">
+      <label for="dwell">悬停触发时长</label>
+      <input type="range" id="dwell" min="2" max="10" step="1">
+      <output id="dwellVal">5 秒</output>
+    </div>
+    <div class="row">
+      <label for="examplesCount">例句条数</label>
+      <input type="number" id="examplesCount" min="0" max="5" step="1">
+    </div>
+    <div class="row">
+      <label for="showSpeak">显示发音按钮</label>
+      <input type="checkbox" id="showSpeak">
+    </div>
+  </section>
+
+  <!-- 小模型 -->
+  <section class="card">
+    <h2>本地小模型（OpenAI 兼容端点）</h2>
+    <div class="row">
+      <label for="modelEnabled">启用小模型</label>
+      <input type="checkbox" id="modelEnabled">
+    </div>
+    <div class="row">
+      <label for="baseUrl">接口地址</label>
+      <input type="text" id="baseUrl" placeholder="http://127.0.0.1:11434/v1" spellcheck="false">
+    </div>
+    <div class="row">
+      <label for="apiKey">API Key（可空）</label>
+      <input type="password" id="apiKey" placeholder="本地 Ollama 留空即可" spellcheck="false">
+    </div>
+    <div class="row">
+      <label for="textModel">文本模型</label>
+      <input type="text" id="textModel" spellcheck="false">
+    </div>
+    <div class="row">
+      <label for="visionModel">视觉模型</label>
+      <input type="text" id="visionModel" placeholder="qwen2.5vl:3b" spellcheck="false">
+    </div>
+    <div class="row">
+      <label for="timeoutMs">超时（毫秒）</label>
+      <input type="number" id="timeoutMs" min="2000" max="180000" step="1000">
+    </div>
+    <div class="row actions">
+      <button class="btn" id="testText">测试文本查词</button>
+      <button class="btn" id="testVision">测试图片识别</button>
+      <button class="btn" id="warmup">预热模型</button>
+      <span class="result" id="modelResult"></span>
+    </div>
+    <p class="note">
+      本地模型冷启动需要把权重读入内存（CPU 上可能 1–3 分钟），
+      点「预热模型」可提前加载，之后每次查词只需几百毫秒。
+    </p>
+    <p class="note">
+      本地 Ollama 用户：先执行 <code>ollama pull qwen2.5:1.5b</code>（文本）与
+      <code>ollama pull qwen2.5vl:3b</code>（视觉，用于图片取词）。
+      若浏览器提示 403，请设置环境变量 <code>OLLAMA_ORIGINS=chrome-extension://*</code> 后重启 Ollama。
+    </p>
+  </section>
+
+  <!-- 图片取词 -->
+  <section class="card">
+    <h2>图片取词</h2>
+    <div class="row">
+      <label for="ocrEnabled">启用</label>
+      <input type="checkbox" id="ocrEnabled">
+    </div>
+    <div class="row">
+      <label for="ocrDwell">图片驻留时长</label>
+      <input type="range" id="ocrDwell" min="500" max="8000" step="100">
+      <output id="ocrDwellVal">1.5 秒</output>
+    </div>
+    <div class="row">
+      <label for="cropW">裁剪宽度</label>
+      <input type="number" id="cropW" min="200" max="900" step="20">
+    </div>
+    <div class="row">
+      <label for="cropH">裁剪高度</label>
+      <input type="number" id="cropH" min="80" max="500" step="20">
+    </div>
+    <div class="row">
+      <label for="ocrHint">识别期间显示提示点</label>
+      <input type="checkbox" id="ocrHint">
+    </div>
+    <p class="note">
+      图片中的文字会被截屏裁剪后发给本地视觉模型识别；识别不到英文单词时不会弹窗。
+      该功能需要授予「所有网站」权限（在扩展弹窗中点击「授权」）。
+    </p>
+  </section>
+
+  <!-- PDF -->
+  <section class="card">
+    <h2>PDF</h2>
+    <div class="row">
+      <label for="pdfAutoOpen">自动用内置阅读器打开 PDF 链接</label>
+      <input type="checkbox" id="pdfAutoOpen">
+    </div>
+    <p class="note">
+      关闭时：检测到 PDF 会在扩展图标上显示 <b>PDF</b> 标记，点开扩展即可用内置阅读器打开。
+      已打开的 PDF 也可以直接拖进阅读器页面。
+    </p>
+  </section>
+
+  <!-- 数据 -->
+  <section class="card">
+    <h2>数据</h2>
+    <div class="row actions">
+      <span id="cacheInfo" class="result">缓存 —</span>
+      <button class="btn" id="clearCache">清空查询缓存</button>
+      <button class="btn" id="reset">恢复默认设置</button>
+    </div>
+    <p class="note">
+      查询结果仅保存在本机，用于加速重复查词；不会上传任何浏览记录。
+    </p>
+  </section>
+</main>
+<script src="../lib/settings-core.js"></script>
+<script src="options.js"></script>
+</body>
+</html>
