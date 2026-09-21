@@ -2,8 +2,43 @@
 
 本文把能在本地准备好的**全部内容**都写好了：你只需要登录 Partner Center、上传 `store/easy-translator-1.0.0.zip`、把下面标注「复制」的文本贴进去。
 
-> 官方流程依据：Microsoft Learn《Publish a Microsoft Edge extension》（2026-09 核对）。
-> 素材尺寸也是同一份文档里的硬性要求，见文末「素材规格」。
+---
+
+## ⚠ 提交前必填项速查（缺任何一项，Submit/Publish 都会被拦住）
+
+| 位置 | 字段 | 值 / 文件 | 类别 |
+|---|---|---|---|
+| Store listing | **Extension logo** | `store/logo-300.png`（300×300，1:1） | **必填（每种语言各一份）** |
+| Store listing | **Description** | 本文第 6 步的中/英文案（**≥250 字符**，短了报错） | **必填（每种语言各一份）** |
+| Privacy | Single Purpose Description | 见 5.1 | **必填** |
+| Privacy | 每个权限的理由（共 7 项：storage / activeTab / webRequest / declarativeNetRequestWithHostAccess / dict.youdao.com / 127.0.0.1+localhost / 可选 &lt;all_urls&gt;） | 见 5.2 | **必填（逐项）** |
+| Privacy | Remote code | 选「不使用远程代码」 | **必填** |
+| Privacy | Data usage | 勾选「不收集用户数据」 | **必填** |
+| Privacy | Privacy policy URL | `https://github.com/Fishman-free/easy-translator/blob/main/PRIVACY.md` | **必填** |
+| Properties | Category / Support contact info | Productivity / 你的邮箱 | **必填** |
+| Availability | Visibility / Markets | Public / 全部市场 | **必填** |
+| Certification notes | 审核测试说明 | 见第 7 步 | **必填** |
+| Store listing | 宣传图、截图、搜索词、YouTube | `store/tile-*.png`、`store/screenshots/*.png` | 可选（建议传，利于转化） |
+
+> 常见误会：**商店列表的图标（Extension logo）与包里的 `icons/` 是两回事**。
+> 包里的 `icons/` 决定浏览器工具栏图标（已随包上传）；商店页显示的是 Extension logo，
+> 必须单独在该语言下上传 `store/logo-300.png`——**它是必填，不传就发不出去**。
+
+---
+
+## 已登记的商店信息（2026-09-21 首次提交）
+
+| 项 | 值 |
+|---|---|
+| 商店标识（Store ID） | `0RDCKDQS06GH` |
+| CRX ID（扩展 ID） | `lnnglikclimokbdcgnpjelpigopdkjeb` |
+| 产品 ID（Product ID） | `3965e488-3125-4e63-9a4c-ba326de5e00c` |
+| 公钥 | 见 Partner Center「Package」页；已校验：`SHA-256(公钥)` 前 16 字节推导出的 ID 与该 CRX ID **完全一致** |
+
+> 该 CRX ID 一旦发布即固定，**更新时必须沿用**。若希望「本地开发者模式加载的副本」
+> 与商店版本使用同一个 ID（便于对照测试），可把 Partner Center 给的公钥加进
+> `manifest.json` 的 `"key"` 字段后重新打包上传（本仓库当前未加，因此本地加载的 ID
+> 是按路径推导的另一串字符，属正常现象）。
 
 ---
 

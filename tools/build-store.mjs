@@ -132,6 +132,26 @@ if (process.argv.includes('--smoke')) {
   fs.rmSync(extractDir, { recursive: true, force: true });
 }
 
+console.log('\n【商店素材规格核对（官方硬性尺寸）】');
+const ASSETS = [
+  ['store/logo-300.png', 'Extension logo（必填·1:1，推荐 300x300）', (s) => s.width === s.height && s.width >= 128],
+  ['store/tile-440x280.png', 'Small promotional tile（可选·440x280）', (s) => s.width === 440 && s.height === 280],
+  ['store/tile-1400x560.png', 'Large promotional tile（可选·1400x560）', (s) => s.width === 1400 && s.height === 560],
+  ['store/screenshots/1-web.png', '截图（可选·最多 6 张，1280x800 或 640x480）', (s) => s.width === 1280 && s.height === 800],
+  ['store/screenshots/2-pdf.png', '截图', (s) => s.width === 1280 && s.height === 800],
+  ['store/screenshots/3-settings.png', '截图', (s) => s.width === 1280 && s.height === 800]
+];
+for (const [rel, label, valid] of ASSETS) {
+  const file = path.join(ROOT, rel);
+  if (!fs.existsSync(file)) {
+    add('素材 ' + rel, false, '文件缺失');
+    continue;
+  }
+  const head = fs.readFileSync(file).subarray(0, 24);
+  const size = { width: head.readUInt32BE(16), height: head.readUInt32BE(20) };
+  add(size.width + 'x' + size.height + '  ' + rel, valid(size), label);
+}
+
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + '─'.repeat(58));
 console.log('打包自检：' + (results.length - failed.length) + '/' + results.length + ' 项通过');
