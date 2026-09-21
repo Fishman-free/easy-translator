@@ -108,6 +108,15 @@
         var above = anchor.y - h - OFFSET_Y;
         top = above >= CARD_MARGIN ? above : Math.max(CARD_MARGIN, vh - h - CARD_MARGIN);
       }
+      // 卡片不要压住光标本身：压住会让鼠标"钻进"卡片、来回触发 mouseenter/mouseleave，
+      // 表现为卡片忽隐忽现（曾经因此出现「卡片再也不回来」的观感）。放不下时改放左侧。
+      var covers = anchor.x >= left && anchor.x <= left + w && anchor.y >= top && anchor.y <= top + h;
+      if (covers) {
+        var above2 = anchor.y - h - OFFSET_Y;
+        var leftOfCursor = anchor.x - w - OFFSET_X;
+        if (above2 >= CARD_MARGIN) top = above2;
+        else if (leftOfCursor >= CARD_MARGIN) left = leftOfCursor;
+      }
       card.root.style.left = Math.round(left) + 'px';
       card.root.style.top = Math.round(top) + 'px';
     }
@@ -438,13 +447,23 @@
       if (current && current.key === info.key) {
         current.x = info.x;
         current.y = info.y;
-        return;   // 同一目标微动：保持计时，不打断
+        // 同一目标微动：保持计时不打断。但如果此刻没有任何可见内容
+        // （卡片已被收起、或还没显示出来），必须重新计时——
+        // 否则会进入「卡片消失后再也不回来」的死状态：
+        // 例如光标蹭到卡片又移回同一个词，或者卡片被视口顶到光标下方。
+        if (!cardVisible() && !timer) scheduleFire(info);
+        return;
       }
       clearTimer();
       current = info;
       if (card && !pinned) hideCard(false);
       cancelHint();
       scheduleFire(info);
+    }
+
+    /** 卡片当前是否有可见内容（loading / result / message 都算） */
+    function cardVisible() {
+      return !!(card && card.root && card.root.style.display !== 'none' && card.root.firstChild);
     }
 
     function clearTarget() {
@@ -455,6 +474,7 @@
     }
 
     function scheduleFire(info) {
+      clearTimer();   // 防止遗留计时器：同一目标重新计时时必须丢掉旧的
       var delay = info.kind === 'image'
         ? ((settings.imageOcr && settings.imageOcr.dwellMs) || 1500)
         : (settings.dwellMs || 5000);

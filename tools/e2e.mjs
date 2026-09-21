@@ -244,6 +244,36 @@ async function main() {
 
     check('页面无 JS 异常', pageErrors.length === 0, pageErrors.slice(0, 2).join(' | '));
 
+    /* —— 场景 3a：卡片出现后光标继续漂移，卡片必须还在 —— */
+    // 真实鼠标永远不会完全静止（手抖 / 高轮询率鼠标）。曾在真实使用中出现：
+    // 卡片被视口顶到光标下方 → 鼠标蹭进卡片再出来 → 收起后因为「目标词没变」不再重排，
+    // 表现为「卡片消失且再也不回来」。这里用抖动序列把这一类钉住。
+    for (let i = 0; i < 30; i++) {
+      await page.mouseMove(enPt.x + ((i % 3) - 1), enPt.y + (((i / 3) | 0) % 3) - 1);
+      await sleep(80);
+    }
+    st = await cardState();
+    check('光标小幅漂移后卡片仍在（真实鼠标手抖）', st.exists && st.state === 'result', JSON.stringify(st));
+
+    // 死锁路径：卡片的收起来源很多（窗口失焦、文档级 mouseleave、滚动…），
+    // 这些收起不会改变 current（仍指向同一个词）。修复前同一目标直接 return，
+    // 于是「卡片收起后，光标还停在词上也永远不会再出现」。这里用「窗口失焦」这条
+    // 确定性路径把该状态钉住。
+    await page.evaluate("window.dispatchEvent(new Event('blur'))");
+    await sleep(1500);                                // 越过 900ms 收起宽限
+    const afterBlur = await cardState();
+    check('失焦后卡片收起（预期行为）', !afterBlur.exists || afterBlur.state !== 'result', JSON.stringify(afterBlur));
+
+    let recovered = null;
+    for (let i = 0; i < 30 && !recovered; i++) {      // 像真实鼠标一样持续微动，等待重新计时
+      await page.mouseMove(enPt.x + ((i % 3) - 1), enPt.y + (((i / 3) | 0) % 3) - 1);
+      await sleep(400);
+      const s = await cardState();
+      if (s.exists && s.state === 'result' && String(s.word).toLowerCase() === 'serendipity') recovered = s;
+    }
+    check('同词上卡片被收起后能自行恢复（不再卡死）', !!recovered,
+      JSON.stringify(recovered || afterBlur));
+
     /* —— 场景 3b：DNR 作用域回归（网页自身的跨源请求不应被剥离 Origin）—— */
     const echo = await page.evaluate(
       `fetch('http://127.0.0.1:${ECHO_PORT}/__echo-origin').then(r => r.json()).catch(e => ({ error: String(e) }))`
