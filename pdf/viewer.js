@@ -45,6 +45,13 @@ function cleanup() {
   state.doc = null;
 }
 
+/** 记录最近一次失败原因到 window.__pdfError（便于排查；e2e 也会读它做诊断） */
+function noteError(where, e) {
+  const msg = (e && e.message) ? e.message : String(e);
+  window.__pdfError = where + ': ' + msg;
+  return msg;
+}
+
 async function openDocument(source, label) {
   cleanup();
   EMPTY.style.display = 'none';
@@ -60,7 +67,7 @@ async function openDocument(source, label) {
   try {
     doc = await pdfjsLib.getDocument(Object.assign(params, source)).promise;
   } catch (e) {
-    const msg = (e && e.message) ? e.message : String(e);
+    const msg = noteError('加载文档', e);
     if (/Missing PDF|Unexpected server response|Failed to fetch|NetworkError/i.test(msg)) {
       setStatus('无法读取该 PDF', '若是跨站链接，请在扩展弹窗中授予「所有网站」权限后重试');
     } else {
@@ -167,6 +174,7 @@ async function renderPage(n) {
     if (ph) ph.remove();
     state.rendered.add(n);
   } catch (e) {
+    noteError('渲染第 ' + n + ' 页', e);
     const ph = holder.querySelector('.placeholder');
     if (ph) ph.textContent = '第 ' + n + ' 页渲染失败';
   } finally {

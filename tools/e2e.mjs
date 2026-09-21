@@ -319,11 +319,22 @@ async function main() {
       await pdf.connect();
       await pdf.send('Runtime.enable');
       let pt = null;
-      for (let i = 0; i < 60 && !pt; i++) {
+      let lastErr = null;
+      // 窗口给到 45s：CI runner 负载高时 pdf.js 渲染明显变慢（曾在 30s 窗口边界偶发失败）
+      for (let i = 0; i < 90 && !pt; i++) {
         await sleep(500);
-        pt = await pdf.evaluate(findWordJs('quick')).catch(() => null);
+        pt = await pdf.evaluate(findWordJs('quick')).catch((e) => { lastErr = e && e.message; return null; });
       }
-      check('PDF 文本层渲染出可悬停文本', !!pt, pt ? 'x=' + pt.x + ', y=' + pt.y : '未找到 quick');
+      // 失败时给出诊断，而不是只说「未找到」
+      const pdfDiag = pt ? null : await pdf.evaluate(`(() => ({
+        spans: document.querySelectorAll('.textLayer span').length,
+        canvases: document.querySelectorAll('canvas').length,
+        text: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 80),
+        err: window.__pdfError || null
+      }))()`).catch((e) => '诊断也失败：' + (e && e.message));
+      check('PDF 文本层渲染出可悬停文本', !!pt,
+        pt ? 'x=' + pt.x + ', y=' + pt.y
+           : '未找到 quick｜' + JSON.stringify(pdfDiag) + (lastErr ? '｜最后错误：' + lastErr : ''));
       if (pt) {
         await pdf.mouseMove(pt.x + 80, pt.y + 60);
         await sleep(300);
@@ -343,10 +354,18 @@ async function main() {
       await opts.send('Runtime.enable');
 
       // 6a. DNR 规则必须始终注册成功：它是「免配置访问本机模型」的前提（CI 上也要验）
-      const rules = await opts.evaluate(
-        'chrome.declarativeNetRequest.getDynamicRules().then(r => r.map(x => ({ id: x.id, headers: (x.action.requestHeaders || []).map(h => h.header) })))'
-      ).catch(() => null);
-      check('已注册「剥离 Origin」的 DNR 规则', Array.isArray(rules) && rules.length >= 2, JSON.stringify(rules));
+      //     规则由 background service worker 启动时写入；SW 是懒启动的，所以这里给一个重试窗口
+      let rules = null;
+      let rulesErr = null;
+      for (let i = 0; i < 20; i++) {
+        rules = await opts.evaluate(
+          'chrome.declarativeNetRequest.getDynamicRules().then(r => r.map(x => ({ id: x.id, headers: (x.action.requestHeaders || []).map(h => h.header) })))'
+        ).catch((e) => { rulesErr = e && e.message; return null; });
+        if (Array.isArray(rules) && rules.length >= 2) break;
+        await sleep(700);
+      }
+      check('已注册「剥离 Origin」的 DNR 规则', Array.isArray(rules) && rules.length >= 2,
+        JSON.stringify(rules) + (rulesErr ? '｜错误：' + rulesErr : ''));
 
       // 6b. 小模型查词链路：需要本机 Ollama，缺失则跳过（不判失败）
       const ollamaUp = await fetch('http://127.0.0.1:11434/api/version').then((r) => r.ok).catch(() => false);
