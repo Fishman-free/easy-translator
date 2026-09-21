@@ -14,7 +14,8 @@
     "test": "node --test tests/normalize.test.mjs",
     "test:e2e": "node tools/e2e.mjs",
     "screenshot": "node tools/screenshot.mjs",
-    "verify": "npm run check && npm test && npm run test:e2e"
+    "verify": "npm run check && npm test && npm run test:e2e",
+    "verify:all": "node tools/verify-all.mjs"
   },
   "engines": {
     "node": ">=20"

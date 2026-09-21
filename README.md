@@ -85,7 +85,8 @@ Chrome 内置 PDF 阅读器无法被注入，因此本扩展内置了一个基�
 ## 开发
 
 ```bash
-npm run verify          # 一键：结构校验 + 单元测试 + 端到端（真机 headless 浏览器）
+npm run verify:all      # 本地总验证：结构 + 单测 + 端到端 + 仓库状态 + 远端 CI 结论
+npm run verify          # 一键：结构校验 + 单元测试 + 端到端（CI 用的就是这条）
 npm run check           # 结构校验：manifest 合法性、引用文件存在性、首方 JS 语法、关键资源非空
 npm test                # 单元测试（21 项：英文判定 / 取词边界 / 响应归一化 / 模型输出容错）
 npm run test:e2e        # 端到端：headless Edge/Chrome 真机加载扩展 + CDP 派发真实鼠标事件
@@ -95,6 +96,7 @@ python tools/make-assets.py     # 重新生成图标与视觉测试图
 python tools/make-test-pdf.py   # 生成 PDF 测试夹具
 ```
 
+> `npm run verify:all` 另有 `--no-e2e`（跳过真机测试，秒级自查）与 `--no-ci`（离线时跳过远端查询）。
 > 找不到浏览器时可用 `ET_BROWSER=/path/to/chrome npm run test:e2e` 显式指定；
 > 浏览器发现顺序见 `tools/lib/browser.mjs`（Windows / macOS / Linux 均已覆盖）。
 
