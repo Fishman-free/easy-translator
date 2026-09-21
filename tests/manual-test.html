@@ -34,9 +34,15 @@
   </section>
 
   <section>
-    <h2>④ 图片中的英文（需授权 + 本地视觉模型）</h2>
+    <h2>④ 图片中的英文（应弹窗；需授权 + 本地视觉模型）</h2>
     <img id="img-en" src="../assets/vision-test.png" alt="Hello">
     <p class="tip">需在扩展弹窗中授予「所有网站」权限，并配置视觉模型（如 qwen2.5vl:3b）。</p>
+  </section>
+
+  <section>
+    <h2>⑤ 只有中文的图片（不应弹窗）</h2>
+    <img id="img-cn" src="fixtures/cn-only.png" alt="这是中文">
+    <p class="tip">识别不到英文单词时，前端应当静默——不出现任何卡片。</p>
   </section>
 </body>
 </html>

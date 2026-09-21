@@ -89,9 +89,27 @@ def make_vision_test_image():
     return img
 
 
+def make_cn_only_image():
+    """图片取词的负样本：只有中文，模型应返回 {"word": null}，前端静默不弹窗。"""
+    img = Image.new("RGB", (360, 140), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    font = pick_font(FONT_CJK_CANDIDATES, 56)
+    text = "这是中文"
+    bbox = draw.textbbox((0, 0), text, font=font)
+    draw.text(
+        ((360 - (bbox[2] - bbox[0])) / 2 - bbox[0], (140 - (bbox[3] - bbox[1])) / 2 - bbox[1]),
+        text,
+        font=font,
+        fill=(17, 24, 39),
+    )
+    return img
+
+
 def main():
     ICON_DIR.mkdir(parents=True, exist_ok=True)
     ASSET_DIR.mkdir(parents=True, exist_ok=True)
+    FIXTURE_DIR = ROOT / "tests" / "fixtures"
+    FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
 
     for size in (16, 32):
         make_icon(size, "A", FONT_LATIN_CANDIDATES).save(ICON_DIR / f"icon{size}.png")
@@ -99,6 +117,8 @@ def main():
         make_icon(size, "译", FONT_CJK_CANDIDATES).save(ICON_DIR / f"icon{size}.png")
 
     make_vision_test_image().save(ASSET_DIR / "vision-test.png")
+    # 图片取词负样本（英文图片在 assets/vision-test.png，说明页与测试页都会用到）
+    make_cn_only_image().save(FIXTURE_DIR / "cn-only.png")
     print("icons + assets written to", ROOT)
 
 

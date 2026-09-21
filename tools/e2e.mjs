@@ -66,6 +66,25 @@ function startOriginEchoServer() {
   return new Promise((resolve) => server.listen(ECHO_PORT, '127.0.0.1', () => resolve(server)));
 }
 
+/**
+ * 生成一份「已授权」的扩展副本：
+ * 把 <all_urls> 从可选权限提升为已授予权限，模拟用户点过弹窗里「授权」之后的状态。
+ * 只改测试副本的 manifest，不动仓库里的正式清单。
+ */
+function prepareExtensionCopy() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'et-ext-'));
+  const items = ['manifest.json', 'background.js', 'lib', 'content', 'popup', 'options', 'pdf', 'pdfjs', 'icons', 'assets'];
+  for (const item of items) {
+    fs.cpSync(path.join(ROOT, item), path.join(dir, item), { recursive: true });
+  }
+  const manifestPath = path.join(dir, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  manifest.host_permissions = (manifest.host_permissions || []).concat(['<all_urls>']);
+  delete manifest.optional_host_permissions;
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  return dir;
+}
+
 /* ---------------- 极简 CDP 客户端 ---------------- */
 
 class CDP {
@@ -142,18 +161,20 @@ async function main() {
 
   const server = await startServer();
   const echoServer = await startOriginEchoServer();
+  const extDir = prepareExtensionCopy();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'et-e2e-'));
   const pageUrl = 'http://127.0.0.1:' + HTTP_PORT + '/tests/manual-test.html';
 
   const child = spawn(browser, headlessFlags({
     remoteDebuggingPort: CDP_PORT,
-    extensionDir: ROOT
+    extensionDir: extDir
   }).concat(['about:blank']), { stdio: 'ignore' });
 
   const cleanup = () => {
     try { child.kill(); } catch (e) { /* 忽略 */ }
     try { server.close(); } catch (e) { /* 忽略 */ }
     try { echoServer.close(); } catch (e) { /* 忽略 */ }
+    try { fs.rmSync(extDir, { recursive: true, force: true }); } catch (e) { /* 忽略 */ }
   };
 
   try {
@@ -399,6 +420,61 @@ async function main() {
           await chrome.storage.local.set({ settings: s });
           return true;
         })()`).catch(() => null);
+      }
+
+      // 6c. 图片取词：需要视觉模型（扩展副本已预授权「所有网站」）
+      const tags = await fetch('http://127.0.0.1:11434/api/tags').then((r) => r.json()).catch(() => null);
+      const hasVision = !!tags && (tags.models || []).some((m) => String(m.name || '').startsWith('qwen2.5vl'));
+      if (!hasVision) {
+        console.log('  ⚠ 跳过图片取词测试：本机没有视觉模型（ollama pull qwen2.5vl:3b）');
+      } else {
+        // 图片取词靠 captureVisibleTab（截当前激活标签页），
+        // 前面的 PDF 场景把激活标签切走了，这里必须先切回测试页
+        await page.send('Page.bringToFront').catch(() => null);
+        await sleep(600);
+
+        const pointOf = async (id) => page.evaluate(`(() => {
+          const el = document.getElementById(${JSON.stringify(id)});
+          if (!el) return null;
+          el.scrollIntoView({ block: 'center' });
+          const r = el.getBoundingClientRect();
+          return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+        })()`);
+
+        const waitForCard = async (wantResult, budgetMs) => {
+          const deadline = Date.now() + budgetMs;
+          let last = null;
+          while (Date.now() < deadline) {
+            await sleep(1000);
+            last = await page.evaluate(CARD_STATE_JS).catch(() => null);
+            if (wantResult && last && last.state === 'result') return last;
+            if (!wantResult && last && last.state === 'result') return last;   // 不该出现却出现了，立即返回
+          }
+          return wantResult ? null : last;
+        };
+
+        // 正样本先跑：把视觉模型加载进内存，负样本才有意义（否则冷启动会被误判为"没弹窗"）
+        // —— 图片中的 Hello → 应识别并查词
+        const enPt = await pointOf('img-en');
+        if (enPt) {
+          await sleep(500);
+          await page.mouseMove(enPt.x, enPt.y);
+          const posState = await waitForCard(true, 60000);
+          check('图片中的英文可识别并查词', !!posState && /hello/i.test(String(posState.word)), JSON.stringify(posState));
+        } else {
+          check('图片中的英文可识别并查词', false, '找不到 #img-en');
+        }
+
+        // —— 只有中文的图片 → 不应弹窗
+        const cnPt = await pointOf('img-cn');
+        if (cnPt) {
+          await sleep(500);
+          await page.mouseMove(cnPt.x, cnPt.y);
+          const negState = await waitForCard(false, 22000);
+          check('图片中没有英文时不弹窗', !negState || negState.state !== 'result', JSON.stringify(negState));
+        } else {
+          check('图片中没有英文时不弹窗', false, '找不到 #img-cn');
+        }
       }
       opts.close();
     }
