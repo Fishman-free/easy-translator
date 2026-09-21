@@ -43,9 +43,11 @@ add('结构校验', check.status === 0,
 
 /* ② 单元测试 */
 console.log('\n② 单元测试');
-const unit = sh(process.execPath, ['--test', 'tests/normalize.test.mjs']);
-const pass = Number((unit.stdout.match(/pass (\d+)/) || [])[1]);
-const fail = Number((unit.stdout.match(/fail (\d+)/) || [])[1]);
+const unit = sh(process.execPath, ['--test', 'tests/normalize.test.mjs', 'tests/tools.test.mjs']);
+const unitOut = (unit.stdout || '') + (unit.stderr || '');
+// Node 的 test runner 随环境换 reporter：管道下是「ℹ pass 25」，CI 日志里是「# pass 25」
+const pass = Number((unitOut.match(/[#ℹ]\s*pass\s+(\d+)/) || [])[1]);
+const fail = Number((unitOut.match(/[#ℹ]\s*fail\s+(\d+)/) || [])[1]);
 add('单元测试', unit.status === 0 && fail === 0 && pass > 0, pass + ' 通过 / ' + fail + ' 失败');
 
 /* ③ 端到端 */
