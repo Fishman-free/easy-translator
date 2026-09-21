@@ -168,7 +168,19 @@ async function main() {
   const child = spawn(browser, headlessFlags({
     remoteDebuggingPort: CDP_PORT,
     extensionDir: extDir
-  }).concat(['about:blank']), { stdio: 'ignore' });
+  }).concat(['about:blank']), { stdio: ['ignore', 'pipe', 'pipe'] });
+
+  // 收集浏览器输出：启动失败时这是唯一的诊断线索（headless 下没人看得到窗口）
+  const browserLog = [];
+  const collect = (buf) => {
+    String(buf).split('\n').forEach((line) => {
+      const t = line.trim();
+      if (t) browserLog.push(t);
+    });
+    while (browserLog.length > 40) browserLog.shift();
+  };
+  if (child.stdout) child.stdout.on('data', collect);
+  if (child.stderr) child.stderr.on('data', collect);
 
   const cleanup = () => {
     try { child.kill(); } catch (e) { /* 忽略 */ }
@@ -178,11 +190,16 @@ async function main() {
   };
 
   try {
-    // 等待 CDP 就绪
+    // 等待 CDP 就绪（CI 冷启动可能较慢；进程提前退出则立刻报错并打印浏览器输出）
     let ready = false;
-    for (let i = 0; i < 60 && !ready; i++) {
+    for (let i = 0; i < 120 && !ready; i++) {
       await sleep(500);
+      if (child.exitCode !== null) break;
       try { await cdpJson('/json/version'); ready = true; } catch (e) { /* 继续等 */ }
+    }
+    if (!ready) {
+      console.error('浏览器未能启动（exitCode=' + child.exitCode + '）。浏览器输出：');
+      console.error(browserLog.slice(-15).join('\n') || '(无输出)');
     }
     check('浏览器调试端口就绪', ready);
     if (!ready) throw new Error('CDP 未就绪');
