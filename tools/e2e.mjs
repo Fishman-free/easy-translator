@@ -18,6 +18,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { findBrowser, headlessFlags } from './lib/browser.mjs';
+import { pickOwnExtensionId } from './lib/ext-id.mjs';
 import {
   CDP, sleep, waitForCdp,
   cdpJson as cdpJsonShared,
@@ -250,15 +251,20 @@ async function main() {
     check('网页跨源请求仍带 Origin（DNR 未误伤网页）',
       !!echo && echo.origin === 'http://127.0.0.1:' + HTTP_PORT, JSON.stringify(echo));
 
-    /* —— 扩展 ID 与打开标签页的工具 —— */
-    const listAll = await cdpJson('/json/list');
+    /* —— 扩展 ID：只能认「我们自己的」service worker 目标 —— */
+    // 陷阱：/json/list 里还有浏览器内置扩展的目标，取第一个 chrome-extension:// 会抓错 ID，
+    // 于是 chrome-extension://<错的ID>/... 全部 ERR_FILE_NOT_FOUND（曾在 CI 上间歇性发生）。
+    // 自己的 SW 注册的是 background.js，URL 以 /background.js 结尾；SW 懒启动，故带重试。
     let extId = null;
-    listAll.forEach((t) => {
-      const m = /^chrome-extension:\/\/([a-p]+)\//.exec(t.url || '');
-      if (m && !extId) extId = m[1];
-    });
-    if (!extId) extId = unpackedId(ROOT);
-    check('解出扩展 ID', !!extId, extId);
+    let foreign = 0;
+    for (let i = 0; i < 30 && !extId; i++) {
+      const picked = pickOwnExtensionId(await cdpJson('/json/list'));
+      extId = picked.id;
+      foreign = Math.max(foreign, picked.foreignCount);
+      if (!extId) await sleep(500);
+    }
+    if (!extId) extId = unpackedId(extDir);   // 兜底：按「实际加载的那个目录」推导
+    check('解出扩展 ID', !!extId, extId + (foreign ? '｜同时忽略 ' + foreign + ' 个其它扩展目标' : ''));
 
     const openTarget = (url) => openCdpTarget(CDP_PORT, url);
 
@@ -303,8 +309,13 @@ async function main() {
       await sleep(700);
       const title = await c.evaluate('document.title').catch(() => '');
       const hasBody = await c.evaluate('!!document.body && document.body.children.length > 0').catch(() => false);
-      check(pageName + ' 正常渲染且无 JS 异常', hasBody && errs.length === 0,
-        (title ? '标题=' + title + ' ' : '') + (errs.slice(0, 1).join(' ') || ''));
+      // 必须确认这是「真正的扩展页面」：加载失败时浏览器会渲染错误页，
+      // 它同样有 body、同样没有 JS 异常——只看这两项会假通过（踩过）
+      const isExtPage = await c
+        .evaluate("typeof chrome !== 'undefined' && !!chrome.runtime && !!chrome.runtime.id && location.protocol === 'chrome-extension:'")
+        .catch(() => false);
+      check(pageName + ' 正常渲染且无 JS 异常', hasBody && isExtPage && errs.length === 0,
+        (title ? '标题=' + title + ' ' : '') + (isExtPage ? '' : '不是有效的扩展页面 ') + (errs.slice(0, 1).join(' ') || ''));
       if (pageName.indexOf('options') !== -1) globalThis.__optionsWs = target.webSocketDebuggerUrl;
       c.close();
     }
@@ -313,7 +324,19 @@ async function main() {
     const pdfPageUrl = 'chrome-extension://' + extId + '/pdf/viewer.html?file=' +
       encodeURIComponent('http://127.0.0.1:' + HTTP_PORT + '/tests/fixtures/sample.pdf');
     const pdfTarget = await openTarget(pdfPageUrl);
-    check('内置 PDF 阅读器页面已打开', !!pdfTarget);
+    const pdfIsExtPage = pdfTarget
+      ? await (async () => {
+          const probe = new CDP(pdfTarget.webSocketDebuggerUrl);
+          await probe.connect();
+          const ok = await probe
+            .evaluate("location.protocol === 'chrome-extension:' && !!document.querySelector('#pages')")
+            .catch(() => false);
+          probe.close();
+          return ok;
+        })()
+      : false;
+    check('内置 PDF 阅读器页面已打开', !!pdfTarget && pdfIsExtPage,
+      pdfTarget ? (pdfIsExtPage ? '' : '打开的是错误页（扩展 ID 可能不对）') : '未找到标签页');
     if (pdfTarget) {
       const pdf = new CDP(pdfTarget.webSocketDebuggerUrl);
       await pdf.connect();
