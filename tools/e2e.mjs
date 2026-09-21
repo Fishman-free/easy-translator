@@ -22,6 +22,7 @@ import { findBrowser, headlessFlags } from './lib/browser.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CDP_PORT = 9333;
 const HTTP_PORT = 8791;
+const ECHO_PORT = 8792;
 const DWELL_WAIT_MS = 8500;   // 触发时长(5s) + 查询与渲染余量
 
 const results = [];
@@ -49,6 +50,20 @@ function startServer() {
     fs.createReadStream(file).pipe(res);
   });
   return new Promise((resolve) => server.listen(HTTP_PORT, '127.0.0.1', () => resolve(server)));
+}
+
+/**
+ * 回显 Origin 的旁路服务（跑在**另一个端口**上）。
+ * 用途：网页从 8791 跨源请求 8792 时，浏览器必然带上 Origin 头；
+ * 用它回归验证「DNR 只剥离本扩展的 Origin，没有误伤网页自身的请求」。
+ * （同源请求不带 Origin，所以这个端点不能和测试页同端口。）
+ */
+function startOriginEchoServer() {
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ origin: req.headers.origin || null, ua: (req.headers['user-agent'] || '').slice(0, 40) }));
+  });
+  return new Promise((resolve) => server.listen(ECHO_PORT, '127.0.0.1', () => resolve(server)));
 }
 
 /* ---------------- 极简 CDP 客户端 ---------------- */
@@ -126,6 +141,7 @@ async function main() {
   console.log('扩展目录：' + ROOT + '\n');
 
   const server = await startServer();
+  const echoServer = await startOriginEchoServer();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'et-e2e-'));
   const pageUrl = 'http://127.0.0.1:' + HTTP_PORT + '/tests/manual-test.html';
 
@@ -137,6 +153,7 @@ async function main() {
   const cleanup = () => {
     try { child.kill(); } catch (e) { /* 忽略 */ }
     try { server.close(); } catch (e) { /* 忽略 */ }
+    try { echoServer.close(); } catch (e) { /* 忽略 */ }
   };
 
   try {
@@ -235,6 +252,13 @@ async function main() {
     check('经在线词典取得释义', st.exists && /有道/.test(String(st.source)), String(st.source));
 
     check('页面无 JS 异常', pageErrors.length === 0, pageErrors.slice(0, 2).join(' | '));
+
+    /* —— 场景 3b：DNR 作用域回归（网页自身的跨源请求不应被剥离 Origin）—— */
+    const echo = await page.evaluate(
+      `fetch('http://127.0.0.1:${ECHO_PORT}/__echo-origin').then(r => r.json()).catch(e => ({ error: String(e) }))`
+    );
+    check('网页跨源请求仍带 Origin（DNR 未误伤网页）',
+      !!echo && echo.origin === 'http://127.0.0.1:' + HTTP_PORT, JSON.stringify(echo));
 
     /* —— 扩展 ID 与打开标签页的工具 —— */
     const listAll = await cdpJson('/json/list');

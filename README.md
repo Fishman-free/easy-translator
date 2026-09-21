@@ -95,7 +95,7 @@ python tools/make-test-pdf.py   # 生成 PDF 测试夹具
 > 找不到浏览器时可用 `ET_BROWSER=/path/to/chrome npm run test:e2e` 显式指定；
 > 浏览器发现顺序见 `tools/lib/browser.mjs`（Windows / macOS / Linux 均已覆盖）。
 
-E2E 覆盖的场景（全部通过后才算可交付）：
+E2E 覆盖的场景（本地 18 项 / CI 17 项，全部通过才算可交付）：
 
 ```
 ✔ 内容脚本注入（隔离世界已创建）
@@ -103,10 +103,18 @@ E2E 覆盖的场景（全部通过后才算可交付）：
 ✔ 悬停空白：不弹窗
 ✔ 悬停英文：弹出卡片（word / source 均正确）
 ✔ 页面无 JS 异常
+✔ 网页跨源请求仍带 Origin（证明 DNR 规则未误伤网页自身请求）
 ✔ popup / options 页面正常渲染且无 JS 异常
 ✔ 内置 PDF 阅读器渲染文本层并可悬停查词
-✔ 小模型链路连通（含 DNR 规则生效验证）
+✔ 已注册「剥离 Origin」的 DNR 规则
+✔ 小模型查词链路连通（浏览器内真实 200；CI 无本地模型时跳过此项而非判失败）
 ```
+
+CI（`.github/workflows/verify.yml`）在 push / PR 时于 `ubuntu-latest` 上跑完整验证，
+浏览器自动发现（runner 上实测使用 `/usr/bin/microsoft-edge`），无需额外配置。
+
+> 说明：**图片取词（视觉模型 OCR）没有自动化覆盖**。它需要 `ollama pull qwen2.5vl:3b`
+> 与「所有网站」可选权限，请按 `tests/manual-test.html` 第 ④ 区域手动验收。
 
 ## 目录结构
 
