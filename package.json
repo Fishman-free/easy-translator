@@ -11,6 +11,7 @@
   },
   "scripts": {
     "check": "node tools/check-structure.mjs",
+    "check:ui": "python tools/check-ui.py",
     "test": "node --test tests/normalize.test.mjs tests/tools.test.mjs",
     "test:e2e": "node tools/e2e.mjs",
     "screenshot": "node tools/screenshot.mjs",

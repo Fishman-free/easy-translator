@@ -62,8 +62,19 @@ if (skipE2e) {
     (m ? m[1] + '/' + m[2] : '未取到结果') + (skipped.length ? '（跳过：' + skipped.join('；') + '）' : ''));
 }
 
-/* ④ 仓库状态 */
-console.log('\n④ 仓库状态');
+/* ④ UI / 立绘资产不变量 */
+console.log('\n④ UI 与立绘资产不变量（tools/check-ui.py）');
+const ui = sh(process.platform === 'win32' ? 'python' : 'python3', ['tools/check-ui.py']);
+const uiOut = (ui.stdout || '') + (ui.stderr || '');
+const uiM = uiOut.match(/UI\/资产校验：(\d+\/\d+)/);
+if (/未找到原始截图/.test(uiOut)) {
+  console.log('  [注] 原始截图不在本机，仅校验已提交资产的不变量');
+}
+add('UI / 立绘资产不变量', ui.status === 0, (uiM ? uiM[1] : '未取到结果')
+  + (ui.status === 0 ? '' : '｜' + (uiOut.split('\n').filter((l) => l.includes('✖')).slice(0, 2).join(' | ') || '见 tools/check-ui.py 输出')));
+
+/* ⑤ 仓库状态 */
+console.log('\n⑤ 仓库状态');
 const dirty = sh('git', ['status', '--porcelain']).stdout.trim();
 add('工作区无未提交改动', dirty === '', dirty.split('\n').slice(0, 3).join(' | '));
 
@@ -72,8 +83,7 @@ const origin = sh('git', ['rev-parse', 'origin/main']).stdout.trim();
 add('本地 HEAD == origin/main', head === origin && head.length === 40,
   head.slice(0, 7) + (head === origin ? '（一致）' : ' vs ' + origin.slice(0, 7)));
 
-/* ⑤ 远端 CI */
-console.log('\n⑤ 远端 CI');
+console.log('\n⑥ 远端 CI');
 if (skipCi) {
   console.log('  ⚠ 已按参数跳过（--no-ci）');
 } else {
