@@ -43,14 +43,21 @@ const ps = sh('powershell -NoProfile -Command ' +
 check('桌面伴生进程在跑', !!ps, `PID ${ps || '（无）'}`);
 
 console.log('\n== ③④ Edge 里的扩展 ==');
-const prefsPath = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'Edge', 'User Data',
-  'Default', 'Preferences');
+// Edge 把扩展设置存在 **Secure Preferences**（Preferences 里常为空 —— 读错文件会误判成「没装」）
+const ud = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'Edge', 'User Data', 'Default');
 let exts = {};
-if (fs.existsSync(prefsPath)) {
-  exts = (JSON.parse(fs.readFileSync(prefsPath, 'utf8')).extensions?.settings) || {};
+for (const f of ['Secure Preferences', 'Preferences']) {
+  const p = path.join(ud, f);
+  if (!fs.existsSync(p)) continue;
+  try {
+    const s = JSON.parse(fs.readFileSync(p, 'utf8')).extensions?.settings || {};
+    exts = { ...exts, ...s };
+  } catch { /* 文件被占用/半写：换下一个 */ }
 }
 const mine = Object.entries(exts).filter(([id, m]) =>
-  String(m?.manifest?.name || '').includes('Easy') || id === EXT_ID);
+  String(m?.manifest?.name || '').includes('Easy') || id === EXT_ID ||
+  /Easy-translator/i.test(String(m?.path || '')) ||
+  (m?.path && String(m.path).includes('Easy-translator')));
 check('Edge 里装了 Easy Translator', mine.length > 0, `配置档共 ${Object.keys(exts).length} 个扩展`);
 
 for (const [id, meta] of mine) {

@@ -53,6 +53,24 @@
 
 /* 尾点按用户要求**不画**（曾压在鲸鱼娘脸上，像多了一个黑色小圈圈） */
 
+/* —— 高对比度/强制颜色模式 ——
+   Windows 开启「高对比度」时，浏览器会把作者指定的 background/color 替换成系统色，
+   自绘卡片会被剥成一个空框（用户实测：框出来了、文字不见）。
+   卡片是自成一体的阅读块，这里声明**不参与**强制替换，保证和设计一致、始终可读；
+   同时用系统色兜底：万一浏览器仍强制，至少边框与文字是高对比的。 */
+.et-card {
+  forced-color-adjust: none;
+}
+@media (forced-colors: active) {
+  .et-card {
+    background: Canvas;
+    border: 2px solid CanvasText;
+  }
+  .et-word, .et-pos, .et-meaning, .et-ex-en, .et-ex-zh, .et-phon, .et-message, .et-foot, .et-source {
+    color: CanvasText !important;
+  }
+}
+
 /* —— 鲸鱼娘：贴在**整个对话框的右下角**（白底内，不透明，任何页面都看得清） —— */
 .et-mascot {
   position: absolute;

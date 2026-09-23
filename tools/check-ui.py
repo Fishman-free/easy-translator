@@ -148,19 +148,18 @@ def px_of(block, prop):
 
 
 m_block = css.split(".et-mascot {")[1].split("}")[0]
-t_block = css.split(".et-tail {")[1].split("}")[0]
 m_right, m_bottom, m_w = px_of(m_block, "right"), px_of(m_block, "bottom"), px_of(m_block, "width")
-t_right, t_bottom = px_of(t_block, "right"), px_of(t_block, "bottom")
 CARD_W, CARD_H = 380, 502          # 布局探针实测的卡片尺寸
 m_h = round(m_w * art.height / art.width)
 m_left, m_top = CARD_W - m_right - m_w, CARD_H - m_bottom - m_h
-css_mouth = (m_left + round(m_w * MOUTH[0]), m_top + round(m_h * MOUTH[1]))
-dots_right, dots_bottom = CARD_W - t_right, CARD_H - t_bottom + 6   # 第二颗点有 -6px 下边距
 check("CSS 里她贴在整个对话框的右下角", m_right <= 10 and m_bottom <= 4,
       "right=%s bottom=%s" % (m_right, m_bottom))
 check("CSS 是白底气泡（不透明背景）", "background: #ffffff" in css and ".et-card" in css)
 check("CSS 里尾点已按要求去掉（.et-tail/.et-dot 不再有绘制规则）",
       ".et-tail {" not in css and ".et-dot {" not in css)
+# 用户实测「框出来了、文字不见」→ 根因是 Windows 高对比度下的强制颜色替换（机器 Flags=126）
+check("CSS 在高对比度下不会被剥成空框（forced-color-adjust + 系统色兜底）",
+      "forced-color-adjust: none" in css and "@media (forced-colors: active)" in css)
 
 print("\n⑤ 资产新鲜度（预览图是否由当前立绘生成）")
 prev_path = os.path.join(ROOT, "docs", "mascot-preview.png")
@@ -172,8 +171,8 @@ if os.path.exists(prev_path):
     for y in range(0, big.height, 2):
         for x in range(0, big.width, 2):
             r, g, b, a = bpx[x, y]
-            if a < 120:
-                continue
+            if a < 250:
+                continue      # 羽化后边缘是半透明；预览是合成图，只在**全不透明**处逐像素比才成立
             pr, pg, pb = ppx[16 + x, 16 + y]
             if abs(pr - r) <= 3 and abs(pg - g) <= 3 and abs(pb - b) <= 3:
                 same += 1
