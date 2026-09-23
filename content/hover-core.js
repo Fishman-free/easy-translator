@@ -230,7 +230,21 @@
       return lines.join('\n');
     }
 
+    /** 兜底：渲染中途任何异常都不许留下「被清空的白框」——
+     *  renderResult 第一步就 clearNode 了当前可见卡片，若其后抛异常，
+     *  屏幕上会永久留一个空框（用户实测：api 能出词、tokens 只剩白框）。
+     *  这里 catch 住并隐藏：宁可什么都不显示，也绝不给一个空白卡片。 */
     function renderResult(data, meta, anchor) {
+      try {
+        renderResultInner(data, meta, anchor);
+      } catch (e) {
+        try { hideCard(true); } catch (e2) { /* 兜底里再出错就放手 */ }
+        try { doc.documentElement.setAttribute('data-et-error', String(e && e.message || e)); } catch (e3) { /* 诊断面，可失败 */ }
+        if (win.console && console.warn) console.warn('[Easy Translator] 渲染失败，已隐藏卡片：', e);
+      }
+    }
+
+    function renderResultInner(data, meta, anchor) {
       var c = ensureCard();
       var r = c.bubble;
       clearNode(r);
