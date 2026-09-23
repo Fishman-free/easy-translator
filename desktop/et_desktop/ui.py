@@ -51,8 +51,11 @@ def font(size: int, bold: bool = False, cjk: bool = True) -> ImageFont.FreeTypeF
 
 
 def _is_cjk(ch: str) -> bool:
+    """该用雅黑渲染吗。注意必须含**全角标点 U+FF00–FFEF**（，；（）之类）——
+    否则这些字会被派给 Segoe UI，缺字形就画成 □（用户：分号逗号变成了方框）。"""
     o = ord(ch)
-    return 0x2E80 <= o <= 0x9FFF or 0xF900 <= o <= 0xFAFF or 0x3040 <= o <= 0x30FF or 0xAC00 <= o <= 0xD7AF
+    return (0x2E80 <= o <= 0x9FFF or 0xF900 <= o <= 0xFAFF or 0x3040 <= o <= 0x30FF
+            or 0xAC00 <= o <= 0xD7AF or 0xFF00 <= o <= 0xFFEF or 0xFE30 <= o <= 0xFE4F)
 
 
 def _runs(text: str):
@@ -231,22 +234,13 @@ def render_card(entry: dict, mascot: Image.Image, scale: float = 1.0) -> Image.I
     mx, my = W - mw - int(6 * s), by1 - int(2 * s) - mh
     canvas.paste(her, (mx, my), her)
 
-    # —— 尾点：两颗「白底 + 藏青描边」小圆，由气泡**指向她的嘴** ——
-    # 她的嘴在立绘的 (51.4%, 70.6%)（tools/make-mascot.py 按肤色像素实测 68.9/134 × 98.9/140）
-    mouth = (mx + int(mw * 0.514), my + int(mh * 0.706))
-    r1, r2 = int(6.5 * s), int(4 * s)
-    d1 = (mouth[0] - int(24 * s), mouth[1] - int(17 * s))
-    d2 = (mouth[0] - int(9 * s), mouth[1] - int(5 * s))
-    for (cx, cy), r in ((d1, r1), (d2, r2)):
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=PAPER,
-                     outline=NAVY, width=max(1, int(BORDER * s)))
+    # —— 尾点按用户要求**不画**（曾压在她脸上，看起来像多了一个黑色小圈圈）——
+    pass
 
-    # —— 硬边 alpha：气泡圆角矩形 ∪ 两颗尾点 ∪ 她的轮廓 ——
+    # —— 硬边 alpha：气泡圆角矩形 ∪ 她的轮廓（尾点已按要求去掉）——
     mask = Image.new("L", (W, H), 0)
     md = ImageDraw.Draw(mask)
     md.rounded_rectangle([bx0, by0, bx1, by1], radius=int(RADIUS * s), fill=255)
-    for (cx, cy), r in ((d1, r1), (d2, r2)):
-        md.ellipse([cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1], fill=255)
     her_alpha = her.split()[3]
     mask.paste(her_alpha, (mx, my), her_alpha)
     canvas.putalpha(mask)

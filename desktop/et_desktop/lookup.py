@@ -331,6 +331,14 @@ def lookup_model(word: str, cfg: dict):
     return normalize_model(content, word)
 
 
+def has_definition(entry: dict) -> bool:
+    """有没有「可看的东西」—— 只有音标/词形、没有释义与例句时不弹空壳。
+    与 lib/normalize.js 的 hasDefinition 同义。"""
+    if not isinstance(entry, dict):
+        return False
+    return bool(entry.get("poses") or entry.get("examples"))
+
+
 def warmup_vision(cfg: dict) -> bool:
     """把视觉模型拉进内存。冷启动 1–3 分钟 —— 不预热的话，第一次在
     微信/游戏这类「辅助功能看不到文字」的界面上取词必然等很久甚至失败（用户会以为坏了）。"""

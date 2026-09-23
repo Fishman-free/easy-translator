@@ -190,6 +190,14 @@ test('wordsIn 枚举文本里的可查英文单词（中英混排/标点/噪声�
   assert.equal('这是test词'.slice(first.start, first.end), 'test');
 });
 
+test('hasDefinition：只有音标/词形时不算有内容（不弹空壳）', () => {
+  assert.equal(ET.hasDefinition({ poses: [], examples: [] }), false);
+  assert.equal(ET.hasDefinition({ phonetics: { us: '/x/' }, forms: [{ name: 'pl', value: 'xs' }] }), false);
+  assert.equal(ET.hasDefinition(null), false);
+  assert.equal(ET.hasDefinition({ poses: [{ pos: 'n.', meaning: '释义' }] }), true);
+  assert.equal(ET.hasDefinition({ examples: [{ en: 'e', zh: '中' }] }), true);
+});
+
 test('wordsIn 与 extractWordAt 的准入判定一致（同一道闸门）', () => {
   // isEnglishWord 拒绝的（长度<2、无元音的长串、连续连字符）在 wordsIn 里也必须被拒绝
   for (const bad of ['a', 'xzqwt', "can't--t"]) {

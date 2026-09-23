@@ -714,7 +714,7 @@
         if (!res || !res.ok) { handleFailure(res, info); return; }
         var d = res.data;
         // 只有音标、没有释义/例句（品牌词、缩写时会出现）→ 不弹空壳，给一句话说明
-        if (!d || (!(d.poses && d.poses.length) && !(d.examples && d.examples.length))) {
+        if (!ET.hasDefinition(d)) {
           showMessage('没有查到释义', '『' + word + '』在词典里没有中文释义（品牌词/缩写常这样）。', info, 'tip');
           return;
         }

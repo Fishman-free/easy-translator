@@ -138,6 +138,14 @@ class TestSettingsWindow(unittest.TestCase):
         win.destroy()
         root.destroy()
 
+    def test_fullwidth_punctuation_goes_to_cjk_font(self):
+        """全角 ，；：（）【】 必须走雅黑 —— 派给 Segoe UI 会缺字形、画成 □（用户报的方框）。"""
+        from et_desktop import ui
+        for ch in "，。；：！？（）【】、":
+            self.assertTrue(ui._is_cjk(ch), f"{ch!r}（U+{ord(ch):04X}）应判为 CJK 字符")
+        for ch in "Aa,. ;()1":
+            self.assertFalse(ui._is_cjk(ch), f"{ch!r} 不该判为 CJK")
+
     def test_header_is_speech_bubble_with_mascot(self):
         from PIL import Image
         from et_desktop import settings_ui, ui

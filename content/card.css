@@ -51,33 +51,7 @@
   padding-left: 9px;
 }
 
-/* —— 尾点：两颗白底藏青描边小圆，由气泡**指向她的嘴**（她说出来的感觉）——
-   她的嘴在立绘的 (51.4%, 70.6%) 处（tools/make-mascot.py 按肤色像素实测 68.9/134 × 98.9/140），
-   所以尾点落在她嘴的左上方、向右下递减。 */
-.et-tail {
-  position: absolute;
-  right: 42px;
-  bottom: 34px;
-  display: flex;
-  align-items: flex-end;
-  gap: 5px;
-}
-.et-dot {
-  display: block;
-  box-sizing: border-box;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: #ffffff;
-  border: 2px solid #1e3264;
-  animation: et-dot 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.12s both;
-}
-.et-dot-sm {
-  width: 8px;
-  height: 8px;
-  margin-bottom: -6px;
-  animation-delay: 0.2s;
-}
+/* 尾点按用户要求**不画**（曾压在鲸鱼娘脸上，像多了一个黑色小圈圈） */
 
 /* —— 鲸鱼娘：贴在**整个对话框的右下角**（白底内，不透明，任何页面都看得清） —— */
 .et-mascot {

@@ -146,10 +146,8 @@ class Watcher(threading.Thread):
 
     def _fire(self, word, x, y, src):
         data = lookup.lookup(word, self.cfg)
-        if not data:
-            return                       # 查不到就静默，不打扰
-        if not (data.get("poses") or data.get("examples")):
-            return                       # 只有音标没有释义 → 不弹空壳（宁可不弹）
+        if not lookup.has_definition(data):
+            return        # 查不到、或只有音标没有释义 → 静默，不弹空壳
         try:
             img = self.render(data)
             self.panel.after(0, lambda: self.panel.show_bubble(img, x, y, word))

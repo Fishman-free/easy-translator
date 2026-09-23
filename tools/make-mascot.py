@@ -105,6 +105,12 @@ def extract_character(im: Image.Image, zone=None, seed=None):
                 apx[x, y] = (r, g, b, 255)
             else:
                 apx[x, y] = (0, 0, 0, 0)
+
+    # 边缘 1px 羽化：原图在画框右/下把人切开了（切口是硬边深色），而她自然轮廓那侧
+    # 是浅色抗锯齿边 —— 两边观感会「颜色不一样」。把 alpha 羽化一层，硬切边就融进白底。
+    from PIL import ImageFilter
+    alpha = art.split()[3].filter(ImageFilter.GaussianBlur(0.6))
+    art.putalpha(alpha)
     info = {"box": box, "size": art.size, "seed": seed, "opaque": len(solid),
             "zone": zone}
     # 她的嘴部位置（肤色区中心）→ 供 UI 把对话气泡的尾巴对准她的嘴
