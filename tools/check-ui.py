@@ -121,6 +121,17 @@ check("尾点末端贴着她的嘴（她说出来的感觉）",
       best is not None and abs(best[0] - mouth[0]) <= 14 and abs(best[1] - mouth[1]) <= 14,
       "嘴%s 最近描边%s" % (mouth, best))
 
+# 释义必须整句横排 —— 曾因「存裸 ls / 取 [0]」被排成一字一行（用户：太丑了）
+long_card = ui.render_card(
+    {"word": "github", "phonetics": {"us": "/ˈɡɪthʌb/"},
+     "poses": [{"pos": "n.", "meaning": "一个开源项目托管平台，让所有人都能参与协作开发"}],
+     "source": "回归"}, ui.load_mascot(MASCOT), scale=1.0)
+check("长释义整句横排（不许一字一行）", long_card.height < 320,
+      "23 字释义渲染高 %d（一字一行会 ≥500）" % long_card.height)
+_prev = Image.new("RGB", long_card.size, (255, 255, 255))
+_prev.paste(long_card, (0, 0), long_card)
+_prev.save(os.path.join(ROOT, "docs", "screenshot-card-long.png"))
+
 print("\n④ 扩展 CSS 纯几何推算（content/card.css，与 ③ 同一套嘴部比例）")
 css = open(os.path.join(ROOT, "content", "card.css"), encoding="utf-8").read()
 

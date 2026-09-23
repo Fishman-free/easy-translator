@@ -154,7 +154,9 @@ def render_card(entry: dict, mascot: Image.Image, scale: float = 1.0) -> Image.I
         if kind == "pos":
             pos, meaning = payload
             ls = _wrap(probe, meaning, f_body, False, inner_w - (int(40 * s) if pos else 0))
-            lines_of[len(heights)] = ls
+            # 注意存 (ls, size) 元组，与其它块一致 —— 存裸 ls 的话绘制端 lines_of[idx][0]
+            # 会取到「第一行字符串」，for 循环就逐字符迭代（释义被排成一字一行）。
+            lines_of[len(heights)] = (ls, f_body)
             heights.append((len(ls), f_body))
         elif kind in ("ex-en", "ex-zh"):
             size = f_body if kind == "ex-en" else int(12 * s)
@@ -204,7 +206,8 @@ def render_card(entry: dict, mascot: Image.Image, scale: float = 1.0) -> Image.I
             x = bx0 + int(PAD_X * s)
             if pos:
                 x += _draw_line(draw, (x, y), pos, int(11.5 * s), True, NAVY) + int(6 * s)
-            for ln in lines_of[idx][0]:
+            ls, _sz = lines_of[idx]
+            for ln in ls:
                 _draw_line(draw, (x, y), ln, f_body, False, INK)
                 y += int(f_body * 1.5)
                 x = bx0 + int(PAD_X * s)
@@ -255,35 +258,52 @@ def load_mascot(path: str) -> Image.Image:
 
 
 class Bubble(tk.Toplevel):
-    """无边框置顶浮层：承载渲染好的卡片图；鼠标移入钉住、移出收起；点击复制。"""
+    """无边框置顶浮层：承载渲染好的卡片图；鼠标移入钉住、移出收起；点击复制。
+
+    内容**可滚动**（滚轮 + 细滚动条）：词条长时卡片会比屏幕高，必须能滑着看全，
+    所以窗口高度封顶（屏高的 MAX_H_RATIO），超出就滚。"""
+
+    MAX_H_RATIO = 0.72          # 窗口最高占屏高比例
 
     def __init__(self, master, on_copy=None, on_leave=None):
         super().__init__(master)
         self.overrideredirect(True)
         self.wm_attributes("-topmost", True)
-        self.wm_attributes("-transparentcolor", "#%02x%02x%02x" % KEY)
+        key = "#%02x%02x%02x" % KEY
+        self.wm_attributes("-transparentcolor", key)
         self.on_copy = on_copy
         self.on_leave = on_leave
         self._photo = None
-        self.label = tk.Label(self, bd=0, bg="#%02x%02x%02x" % KEY, cursor="arrow")
-        self.label.pack()
-        self.label.bind("<Enter>", lambda e: self._cancel_leave())
-        self.label.bind("<Leave>", lambda e: self.on_leave and self.on_leave())
-        self.label.bind("<Button-1>", lambda e: self.on_copy and self.on_copy())
+        self.canvas = tk.Canvas(self, bd=0, highlightthickness=0, bg=key, cursor="arrow")
+        self.sb = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview, width=9)
+        self.canvas.configure(yscrollcommand=self.sb.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.sb.pack(side="right", fill="y")
+        self.canvas.bind("<Enter>", lambda e: self._cancel_leave())
+        self.canvas.bind("<Leave>", lambda e: self.on_leave and self.on_leave())
+        self.canvas.bind("<Button-1>", lambda e: self.on_copy and self.on_copy())
+        self.canvas.bind("<MouseWheel>", self._wheel)
         self.withdraw()
+
+    def _wheel(self, e):
+        self.canvas.yview_scroll(-int((e.delta or 0) / 120), "units")
 
     def _cancel_leave(self):
         pass
 
     def show(self, img: Image.Image, x: int, y: int):
         self._photo = ImageTk.PhotoImage(img.convert("RGB"))
-        self.label.configure(image=self._photo)
+        self.canvas.delete("all")
+        self.canvas.create_image(0, 0, image=self._photo, anchor="nw")
         w, h = img.size
         vw = self.winfo_screenwidth()
         vh = self.winfo_screenheight()
-        left = x + 14 if x + 14 + w < vw else max(4, x - w - 14)
-        top = y + 18 if y + 18 + h < vh else max(4, y - h - 18)
-        self.geometry(f"{w}x{h}+{int(left)}+{int(top)}")
+        view_h = int(min(h, vh * self.MAX_H_RATIO))
+        self.canvas.configure(scrollregion=(0, 0, w, h))
+        left = x + 14 if x + 14 + w + 10 < vw else max(4, x - w - 24)
+        top = y + 18 if y + 18 + view_h < vh else max(4, y - view_h - 18)
+        self.geometry(f"{w + 10}x{view_h}+{int(left)}+{int(top)}")
+        self.canvas.yview_moveto(0)          # 每次都从顶部开始看
         self.deiconify()
         self.lift()
         self._force_topmost()
@@ -301,38 +321,3 @@ class Bubble(tk.Toplevel):
 
     def hide(self):
         self.withdraw()
-
-
-class Panel(tk.Tk):
-    """控制面板：启用开关、驻留秒数、引擎状态、退出。"""
-
-    def __init__(self, cfg: dict, on_change, on_quit):
-        super().__init__()
-        self.title("Easy Translator · 桌面取词")
-        self.wm_attributes("-topmost", True)
-        self.geometry("300x176")
-        self.resizable(False, False)
-        self.cfg = cfg
-        self.on_change = on_change
-
-        self.enabled = tk.BooleanVar(value=cfg.get("enabled", True))
-        tk.Checkbutton(self, text="启用悬停取词", variable=self.enabled,
-                       command=lambda: on_change("enabled", self.enabled.get())).pack(anchor="w", padx=14, pady=(12, 2))
-
-        row = tk.Frame(self)
-        row.pack(anchor="w", padx=14, pady=4)
-        tk.Label(row, text="驻留").pack(side="left")
-        self.dwell = tk.Scale(row, from_=2, to=10, resolution=1, orient="horizontal", length=170,
-                              command=lambda v: on_change("dwell", float(v)))
-        self.dwell.set(cfg.get("dwell", 5))
-        self.dwell.pack(side="left", fill="x", expand=True)
-        tk.Label(row, text="秒").pack(side="left")
-
-        self.status = tk.Label(self, text="引擎：有道词典", anchor="w", fg="#5b6b8c")
-        self.status.pack(anchor="w", padx=14, pady=(2, 0))
-        self.hint = tk.Label(self, text="鼠标停在任意英文单词上约 5 秒即可查词", anchor="w", fg="#8b97ad", wraplength=270)
-        self.hint.pack(anchor="w", padx=14, pady=(0, 4))
-        tk.Button(self, text="退出", command=on_quit).pack(anchor="e", padx=14, pady=(2, 10))
-
-    def set_status(self, text: str):
-        self.status.configure(text=text)
