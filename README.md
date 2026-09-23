@@ -13,7 +13,7 @@
 | 表面 | 方案 | 依赖 |
 |---|---|---|
 | 网页文本 | 浏览器原生取词（精确到字符） | 无 |
-| **PDF** | 内置基于 pdf.js 的阅读器（Chrome 自带 PDF 阅读器是封闭页面，任何扩展都注入不进去） | 无 |
+| **PDF** | 内置基于 pdf.js 的阅读器（Edge 自带的 PDF 阅读器是封闭页面，任何扩展都注入不进去） | 无 |
 | **图片里的文字** | 截屏裁剪光标周边 → 本地视觉小模型识别 | 需授权 + 视觉模型 |
 
 ## 特性
@@ -36,7 +36,7 @@ Microsoft Edge 商店：**提交审核中**，上架后这里会补上商店链�
 ### 从源码加载（开发者模式）
 
 1. 克隆或下载本仓库
-2. Chrome / Edge → `chrome://extensions` → 打开「开发者模式」→「加载已解压的扩展程序」→ 选择本目录
+2. Edge 地址栏输入 `edge://extensions` → 打开左下角「开发人员模式」→ 点「加载解压缩的扩展」→ 选择本目录
 3. 打开任意英文网页，把鼠标停在一个单词上约 5 秒
 
 > 首次安装后悬停即可工作（默认走在线词典，零配置）。
@@ -76,11 +76,18 @@ ollama pull qwen2.5vl:3b     # 图片取词（可选），约 3 GB
 
 ![PDF 取词效果](docs/screenshot-pdf.png)
 
-Chrome 内置 PDF 阅读器无法被注入，因此本扩展内置了一个基于 pdf.js 的阅读器：
+Edge 自带的 PDF 阅读器是浏览器内置页面，任何扩展都注入不进去，因此本扩展内置了一个基于 pdf.js 的阅读器。
 
-- 打开 PDF 时扩展图标会出现 **PDF** 标记 → 点开扩展 → 「用增强阅读器打开」
-- 设置页可开启「自动用内置阅读器打开 PDF 链接」
-- 本地 PDF 文件可直接拖进阅读器页面；阅读器支持翻页、缩放、`#page=N` 跳转
+**用法：需要你先点一下扩展图标**
+
+1. 在 Edge 里打开任意 PDF
+2. **点击工具栏上的 Easy Translator 图标**（图标若被折叠，先点工具栏的「扩展」拼图图标，把 Easy Translator 固定到工具栏）
+3. 弹窗里出现「**检测到 PDF 页面**」→ 点【**用增强阅读器打开**】，之后就能在增强阅读器里悬停取词
+
+> 想省去每次手动点击：在扩展设置页开启「**自动用内置阅读器打开 PDF 链接**」，之后打开 PDF 链接会直接进入增强阅读器。
+> 已经打开的 PDF，也可以直接**拖进阅读器页面**。
+
+阅读器支持翻页、缩放、`#page=N` 跳转。
 
 ## 使用技巧
 
@@ -98,7 +105,7 @@ npm run verify:all      # 本地总验证：结构 + 单测 + 端到端 + 仓库
 npm run verify          # 一键：结构校验 + 单元测试 + 端到端（CI 用的就是这条）
 npm run check           # 结构校验：manifest 合法性、引用文件存在性、首方 JS 语法、关键资源非空
 npm test                # 单元测试（25 项：英文判定 / 取词边界 / 响应归一化 / 模型输出容错 / 工具链）
-npm run test:e2e        # 端到端：headless Edge/Chrome 真机加载扩展 + CDP 派发真实鼠标事件
+npm run test:e2e        # 端到端：headless Edge 真机加载扩展 + CDP 派发真实鼠标事件
 npm run screenshot      # 开发用真机截图（docs/screenshot-*.png）
 
 npm run build:store         # 打包成可提交商店的 zip（自建 ZIP 写入器，避免反斜杠路径问题）
@@ -112,7 +119,7 @@ python tools/make-demo-pdf.py       # 商店截图用的演示 PDF
 ```
 
 > `npm run verify:all` 另有 `--no-e2e`（跳过真机测试，秒级自查）与 `--no-ci`（离线时跳过远端查询）。
-> 找不到浏览器时可用 `ET_BROWSER=/path/to/chrome npm run test:e2e` 显式指定；
+> 找不到浏览器时可用 `ET_BROWSER=<浏览器可执行文件路径> npm run test:e2e` 显式指定；
 > 浏览器发现顺序见 `tools/lib/browser.mjs`（Windows / macOS / Linux 均已覆盖）。
 
 E2E 覆盖的场景（本机 23 项 / CI 20 项，全部通过才算可交付）：
@@ -179,7 +186,7 @@ store/                 上架材料：SUBMISSION.md、图标/宣传图、demo �
 
 - 网页/PDF 取词：只把**单词**发给词典接口（或本机模型）
 - 图片取词：只把**光标周边的裁剪图**发给本机视觉模型，不经任何第三方服务器
-- 缓存只存本机 `chrome.storage.local`，可在设置页一键清空
+- 缓存只存本机（扩展本地存储），可在设置页一键清空
 
 完整声明见 [`PRIVACY.md`](PRIVACY.md)。
 
