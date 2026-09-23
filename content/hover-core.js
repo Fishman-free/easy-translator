@@ -136,7 +136,11 @@
       if (!card) return;
       if (pinned && !force) return;
       card.root.style.display = 'none';
-      clearNode(card.root);
+      // 只清**气泡内**的内容；绝不清 root —— 清 root 会把 .et-bubble 从 DOM 里摘掉，
+      // 而 renderResult 用的是 c.bubble 这个旧引用，之后每次渲染都填进已脱离文档的元素，
+      // 屏幕上只剩一个空的 .et-card（白底描边、没有字）。
+      // 用户实测：第一个词正常，第二个及以后全是白框，且再也回不来。
+      if (card.bubble) clearNode(card.bubble);
       setState('hidden');
       cancelHint();
     }
