@@ -172,16 +172,19 @@ def render_card(entry: dict, mascot: Image.Image, scale: float = 1.0) -> Image.I
             heights.append((len(ls), size))
 
     text_h = sum(n * (int(sz * 1.5)) for n, sz in heights) + gap * (len(blocks) - 1)
+    mw = int(MASCOT_W * s)
+    mh = round(mascot.height * mw / mascot.width)
     bubble_h = int(2 * (MARGIN + BORDER) + 2 * PAD_Y * s) + text_h
+    bubble_h = max(bubble_h, mh + int(8 * s))     # 气泡至少要装得下她（loading 态也不能顶出去）
     W = max_w
-    H = max(bubble_h + bottom, int((MASCOT_W / 0.6) * s))
+    H = bubble_h + bottom
 
     canvas = Image.new("RGBA", (W, H), KEY + (255,))
     draw = ImageDraw.Draw(canvas)
 
-    # —— 气泡（白底 + 藏青描边 + 圆角）——
+    # —— 气泡：整块白底 + 藏青描边 + 圆角（**不做透明**，深色页面上也看得清）——
     bx0, by0 = MARGIN, MARGIN
-    bx1, by1 = W - pad_r - MARGIN + int(GUTTER * 0.55 * s), bubble_h - MARGIN
+    bx1, by1 = W - MARGIN, bubble_h - MARGIN
     draw.rounded_rectangle([bx0, by0, bx1, by1], radius=int(RADIUS * s), fill=PAPER,
                            outline=NAVY, width=max(1, int(BORDER * s)))
 
@@ -220,23 +223,25 @@ def render_card(entry: dict, mascot: Image.Image, scale: float = 1.0) -> Image.I
             y += int(f_small * 1.5)
         y += gap
 
-    # —— 尾点：两颗藏青小圆，由气泡指向她 ——
-    tx = bx1 + int(11 * s)
-    ty = by1 - int(28 * s)
-    r1, r2 = int(4.5 * s), int(2.5 * s)
-    draw.ellipse([tx - r1, ty - r1, tx + r1, ty + r1], fill=NAVY)
-    draw.ellipse([tx + int(8 * s) - r2, ty + int(7 * s) - r2, tx + int(8 * s) + r2, ty + int(7 * s) + r2], fill=NAVY)
+    # —— 尾点：两颗「白底 + 藏青描边」小圆，挂在气泡右下角外（与原图同款）——
+    r1, r2 = int(6.5 * s), int(4 * s)
+    d1 = (bx1 - int(2 * s) - r1, by1 + int(9 * s) + r1)
+    d2 = (d1[0] + int(11 * s), d1[1] + int(7 * s))
+    for (cx, cy), r in ((d1, r1), (d2, r2)):
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=PAPER,
+                     outline=NAVY, width=max(1, int(BORDER * s)))
 
-    # —— 鲸鱼娘：贴在右下角 ——
-    mw = int(MASCOT_W * s)
-    mh = round(mascot.height * mw / mascot.width)
+    # —— 鲸鱼娘：站在气泡右下角的白色区域里（不透明） ——
     her = mascot.resize((mw, mh), Image.LANCZOS)
-    mx, my = W - mw, H - mh
+    mx, my = W - mw - int(10 * s), by1 - int(2 * s) - mh
     canvas.paste(her, (mx, my), her)
 
-    # —— 硬边 alpha：圆角矩形 ∪ 她的轮廓 ——
+    # —— 硬边 alpha：气泡圆角矩形 ∪ 两颗尾点 ∪ 她的轮廓 ——
     mask = Image.new("L", (W, H), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([bx0, by0, bx1, by1], radius=int(RADIUS * s), fill=255)
+    md = ImageDraw.Draw(mask)
+    md.rounded_rectangle([bx0, by0, bx1, by1], radius=int(RADIUS * s), fill=255)
+    for (cx, cy), r in ((d1, r1), (d2, r2)):
+        md.ellipse([cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1], fill=255)
     her_alpha = her.split()[3]
     mask.paste(her_alpha, (mx, my), her_alpha)
     canvas.putalpha(mask)
