@@ -336,6 +336,54 @@ async function main() {
       }
     }
 
+    /* —— 场景 3e：可编辑区与表单控件（鼠标是「工」字形光标时也必须能查词）—— */
+    // 用户实测：ChatGPT 的消息框是 contentEditable，鼠标一进输入区（工字形光标）就查不到词 ——
+    // 根因是旧版把「可编辑区」整块跳过；而 textarea/input 的 value 根本不是 DOM 文本节点。
+    // 这里把三类输入区都钉住：任何光标状态、任何文本，查词都必须有效。
+    const ptCE = await centerOfWordIn('#composer', 'serendipity');
+    if (!ptCE) {
+      check('可编辑区 contentEditable', false, '测试页缺少 #composer');
+    } else {
+      await page.mouseMove(Math.max(4, ptCE.x - 80), ptCE.y);
+      await sleep(250);
+      await page.mouseMove(ptCE.x, ptCE.y);
+      await sleep(DWELL_WAIT_MS + 2500);
+      st = await cardState();
+      check('可编辑区 contentEditable（ChatGPT 消息框同类）→ 取到正确词',
+        st.exists && st.state === 'result' && String(st.word).toLowerCase() === 'serendipity', JSON.stringify(st));
+      await page.mouseMove(4, 4);
+      await sleep(400);
+    }
+
+    // 每条用例各自把目标滚入视口、当场读矩形 —— 一次性读多个元素会被最后一次滚动作废
+    const ctrlCases = [
+      ['msgbox', 30, 0.25, 'textarea 上半行（第 1 行）', 'curiosity'],
+      ['msgbox', 30, 0.75, 'textarea 下半行（第 2 行）', 'serendipity'],
+      ['findbox', 30, 0.5, 'input（value 里的词）', 'serendipity']
+    ];
+    for (const [id, dx, fy, label, want] of ctrlCases) {
+      const box = await page.evaluate(`(() => {
+        const el = document.getElementById(${JSON.stringify(id)});
+        if (!el) return null;
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, w: r.width, h: r.height };
+      })()`);
+      if (!box) { check('表单控件：' + label, false, '测试页缺少 #' + id); continue; }
+      const cx = Math.round(box.left + dx), cy = Math.round(box.top + box.h * fy);
+      await page.mouseMove(Math.max(4, cx - 80), cy);
+      await sleep(250);
+      await page.mouseMove(cx, cy);
+      await sleep(DWELL_WAIT_MS + 2500);
+      st = await cardState();
+      check('表单控件：' + label + ' → 取到正确词',
+        st.exists && st.state === 'result' && String(st.word).toLowerCase() === want,
+        JSON.stringify(st) + ' 命中点=' + cx + ',' + cy
+          + ' 取词路径=' + await page.evaluate(`document.documentElement.getAttribute('data-et-trace')`));
+      await page.mouseMove(4, 4);
+      await sleep(400);
+    }
+
     /* —— 场景 3d：DNR 作用域回归（网页自身的跨源请求不应被剥离 Origin）—— */
     const echo = await page.evaluate(
       `fetch('http://127.0.0.1:${ECHO_PORT}/__echo-origin').then(r => r.json()).catch(e => ({ error: String(e) }))`

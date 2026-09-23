@@ -134,7 +134,7 @@ python tools/make-demo-pdf.py       # 商店截图用的演示 PDF
 > 找不到浏览器时可用 `ET_BROWSER=<浏览器可执行文件路径> npm run test:e2e` 显式指定；
 > 浏览器发现顺序见 `tools/lib/browser.mjs`（Windows / macOS / Linux 均已覆盖）。
 
-E2E 覆盖的场景（本机 29 项 / CI 26 项，全部通过才算可交付）：
+E2E 覆盖的场景（本机 33 项 / CI 30 项，全部通过才算可交付）：
 
 ```
 ✔ 内容脚本注入（隔离世界已创建）
@@ -190,6 +190,7 @@ store/                 上架材料：SUBMISSION.md、图标/宣传图、demo �
 ## 设计取舍
 
 - **空白处不取词**：光标落在词间空格上不会触发（宁可漏，不误报）
+- **输入区里照样取词**：鼠标进输入框变成「工」字形光标也不失灵 —— `contentEditable`（如 ChatGPT 的消息框）走文本节点路径；`textarea`/`input` 的 `value` 不在 DOM 里，用「一字一 span 的隐藏镜像层」量出落点字符下标
 - **只认纯 ASCII 英文词**：`café`、`naïve` 等带变音符号的词不触发；`don't`、`well-known`、`XML` 正常
 - **单字母词不触发**：`a`、`I` 这类太容易误触
 - **有选区时不触发**：避免和划词翻译/复制操作打架

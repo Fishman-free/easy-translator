@@ -59,5 +59,23 @@
     <h2>⑧ 不可选中文本 user-select:none（应弹窗）</h2>
     <p id="noselect" style="user-select:none;-webkit-user-select:none">Labels like serendipity often live inside user-select:none UI.</p>
   </section>
+
+  <section>
+    <h2>⑨ 可编辑区 contentEditable（应弹窗 —— ChatGPT 的消息框就是这类）</h2>
+    <div id="composer" contenteditable="true" style="border:1px solid #888;border-radius:8px;padding:8px;min-height:48px">Type here: serendipity awaits.</div>
+    <p class="tip">鼠标进输入区后是「工」字形光标，但查词功能不许失灵。</p>
+  </section>
+
+  <section>
+    <h2>⑩ 多行输入框 textarea（应弹窗；上半行 curiosity、下半行 serendipity）</h2>
+    <textarea id="msgbox" rows="2" style="width:420px;font-size:14px;line-height:1.5">curiosity
+serendipity</textarea>
+    <p class="tip">value 不是 DOM 文本节点 —— 靠镜像层量出落点字符下标。</p>
+  </section>
+
+  <section>
+    <h2>⑪ 单行输入框 input（应弹窗）</h2>
+    <input id="findbox" value="serendipity" style="width:420px;font-size:14px">
+  </section>
 </body>
 </html>

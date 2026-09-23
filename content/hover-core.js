@@ -374,17 +374,6 @@
 
     /* ---------------- 取词 ---------------- */
 
-    function isEditable(node) {
-      var n = node;
-      for (var i = 0; i < 4 && n; i++) {
-        var tag = (n.tagName || '').toUpperCase();
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-        if (n.isContentEditable) return true;
-        n = n.parentElement;
-      }
-      return false;
-    }
-
     /** 文本节点内 [start,end) 的首个可见矩形（跨行时取第一段） */
     function rectIn(node, start, end) {
       try {
@@ -421,7 +410,6 @@
 
       var found = ET.extractWordAt(node.textContent || '', range.startOffset);
       if (!found.word) return null;
-      if (isEditable(node.parentElement)) return null;
       return { node: node, word: found.word, start: found.start, end: found.end };
     }
 
@@ -455,7 +443,6 @@
       try { el = doc.elementFromPoint(x, y); } catch (e) { return null; }
       if (!el) return null;
       if (card && card.host && (el === card.host || card.host.contains(el))) return null;
-      if (isEditable(el)) return null;
 
       var best = null;
       var bestDist = Infinity;
@@ -465,7 +452,6 @@
       while ((node = walker.nextNode()) && scanned < GEOM_MAX_NODES) {
         var text = node.textContent || '';
         if (!text || !/[A-Za-z]/.test(text)) continue;
-        if (isEditable(node.parentElement)) continue;
         var words = ET.wordsIn(text);
         if (!words.length) continue;
         scanned++;
@@ -485,14 +471,116 @@
       return best;
     }
 
+    /* ---------------- 表单控件里的文字（textarea / input） ----------------
+       控件的 value 不是 DOM 文本节点，caret 落点法拿不到 —— 而输入框恰恰都是这类
+       （ChatGPT 的消息框、搜索框……）。做法：按同样的字体与盒模型把 value 拆成
+       「一字一 span」铺在控件正上方的隐藏层里，读每个 span 的矩形找落点字符下标。
+       不用 hit-test（visibility:hidden 也能读矩形），故不受 pointer-events / 层叠影响。 */
+    var mcFor = null, mcVal = null, mcScroll = '', mcBox = null, mcSpans = null;
+    var TEXTY_INPUTS = { text: 1, search: 1, url: 1, tel: 1, password: 1, email: 1 };
+
+    function textControlOf(el) {
+      for (var i = 0; i < 3 && el; i++) {
+        var tag = (el.tagName || '').toUpperCase();
+        if (tag === 'TEXTAREA') return el;
+        if (tag === 'INPUT') {
+          return TEXTY_INPUTS[(el.type || 'text').toLowerCase()] ? el : null;
+        }
+        if (tag === 'SELECT') return null;
+        el = el.parentElement;
+      }
+      return null;
+    }
+
+    function controlMirror(el) {
+      var key = el.scrollTop + ',' + el.scrollLeft;
+      if (mcFor === el && mcVal === el.value && mcScroll === key && mcBox && mcBox.offsetWidth === el.offsetWidth) {
+        return mcSpans;
+      }
+      if (mcBox && mcBox.parentNode) mcBox.parentNode.removeChild(mcBox);
+      mcFor = el; mcVal = el.value; mcScroll = key;
+      var cs = win.getComputedStyle(el);
+      var r = el.getBoundingClientRect();
+      var box = doc.createElement('div');
+      var st = box.style;
+      st.position = 'fixed';
+      st.left = r.left + 'px';
+      st.top = r.top + 'px';
+      st.width = el.offsetWidth + 'px';
+      st.height = el.offsetHeight + 'px';
+      st.visibility = 'hidden';
+      st.pointerEvents = 'none';
+      st.overflow = 'hidden';
+      st.boxSizing = cs.boxSizing;
+      st.whiteSpace = ((el.tagName || '').toUpperCase() === 'INPUT') ? 'pre' : 'pre-wrap';
+      st.overflowWrap = 'break-word';
+      st.wordBreak = 'normal';
+      var props = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant', 'letterSpacing',
+        'lineHeight', 'textTransform', 'textAlign', 'textIndent', 'wordSpacing', 'tabSize',
+        'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
+      for (var i = 0; i < props.length; i++) st[props[i]] = cs[props[i]];
+      var spans = [];
+      var val = mcVal;
+      for (var j = 0; j < val.length; j++) {
+        var sp = doc.createElement('span');
+        sp.textContent = val.charAt(j);
+        box.appendChild(sp);
+        spans.push(sp);
+      }
+      doc.body.appendChild(box);
+      box.scrollTop = el.scrollTop;
+      box.scrollLeft = el.scrollLeft;
+      mcBox = box;
+      mcSpans = spans;
+      return spans;
+    }
+
+    function wordFromControl(el, x, y) {
+      var idx = -1, tag = '', n = 0;
+      try {
+        el = textControlOf(el);
+        if (!el || typeof el.value !== 'string' || !el.value) return null;
+        tag = (el.tagName || '').toUpperCase();
+        var spans = controlMirror(el);
+        n = spans.length;
+        var near = -1, nearD = 1e9;
+        for (var i = 0; i < spans.length; i++) {
+          var b = spans[i].getBoundingClientRect();
+          if (b.width === 0 && b.height === 0) continue;
+          if (x >= b.left - 0.5 && x <= b.right + 0.5 && y >= b.top - 0.5 && y <= b.bottom + 0.5) { idx = i; break; }
+          var d = Math.max(b.left - x, 0, x - b.right) + Math.max(b.top - y, 0, y - b.bottom);
+          if (d < nearD) { nearD = d; near = i; }
+        }
+        if (idx < 0 && nearD <= 8) idx = near;          // 兜底：贴着最近的字符（跨度稍有偏差时）
+        if (idx >= 0) {
+          var found = ET.extractWordAt(el.value, idx);
+          trace({ path: 'control', tag: tag, n: n, idx: idx, nearD: Math.round(nearD), word: found.word || '' });
+          return found.word ? { word: found.word, start: found.start, end: found.end } : null;
+        }
+      } catch (e) { trace({ path: 'control', error: String(e) }); return null; }
+      trace({ path: 'control', tag: tag, n: n, idx: idx, word: '' });
+      return null;
+    }
+
+    /** 取词路径诊断（跨世界可见：写在 <html> 的 data 属性上，E2E/排查时可读） */
+    function trace(obj) {
+      try { doc.documentElement.setAttribute('data-et-trace', JSON.stringify(obj)); } catch (e) { /* 忽略 */ }
+    }
+
     /**
      * 落点 → 单词。
-     * ① caret 落点解析：仅在「落点确实在词内」时采信——极小字号下 caret 会吸到相邻词上，
+     * ① 表单控件（textarea/input）：value 不在 DOM 里，走镜像层量下标
+     * ② caret 落点解析：仅在「落点确实在词内」时采信——极小字号下 caret 会吸到相邻词上，
      *    那种结果比不弹窗更糟（用户会看到另一个词的释义）。
-     * ② ±2/±4px 多点探测：caret 落在缝隙/标点上时，从邻近点把它捞回来。
-     * ③ 按矩形就近匹配：caret 完全不可用（user-select:none、无插入点的光标上下文）时的兜底。
+     * ③ ±2/±4px 多点探测：caret 落在缝隙/标点上时，从邻近点把它捞回来。
+     * ④ 按矩形就近匹配：caret 完全不可用（user-select:none、无插入点的光标上下文）时的兜底。
      */
     function wordAtPoint(x, y) {
+      var el = null;
+      try { el = doc.elementFromPoint(x, y); } catch (e) { el = null; }
+      var ctrlHit = el ? wordFromControl(el, x, y) : null;
+      if (ctrlHit) return ctrlHit;
       var caretHit = wordByProbing(x, y);
       var hit = (caretHit && containsPoint(x, y, caretHit)) ? caretHit : (wordByGeometry(x, y) || caretHit);
       return hit ? { word: hit.word, start: hit.start, end: hit.end } : null;
