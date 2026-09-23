@@ -319,6 +319,7 @@
       }
       r.appendChild(foot);
 
+      cancelPendingHide();                 // 刚要显示：把待触发的延迟隐藏取消掉（否则会把新卡片收走）
       c.root.style.display = 'block';
       positionCard(anchor);
       setState('result', data.word, meta.engine || data.source || '');
@@ -350,6 +351,7 @@
       r.appendChild(head);
       var body = el('div', 'et-message', text);
       r.appendChild(body);
+      cancelPendingHide();
       c.root.style.display = 'block';
       positionCard(anchor || { x: 80, y: 80 });
       setState(kind === 'tip' ? 'tip' : 'message', title);
@@ -615,6 +617,12 @@
       if (timer) { win.clearTimeout(timer); timer = null; }
     }
 
+    /** 取消「待触发的延迟隐藏」—— 弹出内容时必须调用，
+     *  否则上一次 hideCard(false) 排下的隐藏会把刚显示的卡片收走（预取让渲染变同步后会踩到）。 */
+    function cancelPendingHide() {
+      if (hideTimer) { win.clearTimeout(hideTimer); hideTimer = null; }
+    }
+
     function setTarget(info) {
       if (current && current.key === info.key) {
         current.x = info.x;
@@ -650,11 +658,13 @@
       var delay = info.kind === 'image'
         ? ((settings.imageOcr && settings.imageOcr.dwellMs) || 1500)
         : (settings.dwellMs || 5000);
+      // 用户：「开始判定了的时间一定要短于设定的时间」—— 判定起点取设定值的 60%，
+      // 于是「等到弹出」大致就落在设定时刻，且弹出的一定是完整的翻译框（没有加载壳）。
       timer = win.setTimeout(function () {
         timer = null;
         if (stopped || !current || current.key !== info.key) return;
         fire(info);
-      }, delay);
+      }, Math.max(120, Math.round(delay * 0.6)));
     }
 
     function fire(info) {
@@ -691,8 +701,7 @@
     }
 
     function lookupText(word, info, myToken) {
-      // 用户：「不要先弹一个空白方框」—— 查到内容之前**完全不显示**，
-      // 只记状态（加载壳曾是 et-loading 的空白卡片，看着像空方框）。
+      // 用户：「不要先弹一个空白方框」—— 查到内容之前**完全不显示**，只记状态。
       setState('loading', word);
       sendMessage({ type: 'lookup', word: word }, function (res) {
         if (myToken !== token) return;
@@ -703,10 +712,7 @@
           showMessage('没有查到释义', '『' + word + '』在词典里没有中文释义（品牌词/缩写常这样）。', info, 'tip');
           return;
         }
-        renderResult(d, {
-          engine: res.engine,
-          cached: res.cached
-        }, info);
+        renderResult(d, { engine: res.engine, cached: res.cached }, info);   // 弹出的一定是**完整**的翻译框
       });
     }
 
