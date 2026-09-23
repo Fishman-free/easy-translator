@@ -18,12 +18,14 @@ Easy Translator · UI 与立绘资产的不变量校验
 退出码：0 = 全过；1 = 有失败（打印失败项）。
 """
 import importlib.util
+import json
 import os
 import re
 import sys
+import time
 import datetime
 
-from PIL import Image
+from PIL import Image, ImageGrab
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MASCOT = os.path.join(ROOT, "assets", "mascot.png")
@@ -175,6 +177,46 @@ for rel in ("docs/screenshot-web.png", "store/screenshots/1-web.png"):
     fmt = lambda t: datetime.datetime.fromtimestamp(t).strftime("%H:%M:%S")
     check("%s 不陈旧（否则那张图用的是旧立绘）" % rel, m >= art_mtime - 1,
           "图 %s｜立绘 %s" % (fmt(m), fmt(art_mtime)))
+
+print("\n⑥ 设置窗口真机出图（desktop/et_desktop/settings_ui.py）")
+try:
+    import tkinter as tk
+    from et_desktop import settings_ui
+    root = tk.Tk()
+    root.withdraw()
+    win = settings_ui.SettingsWindow(root, json.loads(json.dumps(
+        {"enabled": True, "dwellMs": 5000, "engine": "auto", "examplesCount": 3, "showSpeak": True,
+         "model": {"enabled": False, "baseUrl": "http://127.0.0.1:11434/v1", "apiKey": "",
+                   "textModel": "qwen2.5:1.5b", "visionModel": "qwen2.5vl:3b", "timeoutMs": 60000},
+         "imageOcr": {"enabled": True, "dwellMs": 1500, "cropW": 460, "cropH": 140, "hint": True}})),
+        lambda *a: None, mascot=art, test_text=lambda: (True, "✔ ok"))
+    win.update_idletasks()
+    win.deiconify()
+    # 必须真正置顶：不然截到的是盖在它上面的窗口（曾截成终端：纯白 0、藏青 5）
+    win.lift()
+    try:
+        win.attributes("-topmost", True)
+    except Exception:
+        pass
+    win.update()
+    time.sleep(0.5)
+    win.update()
+    x, y = win.winfo_rootx(), win.winfo_rooty()
+    w, h = win.winfo_width(), win.winfo_height()
+    shot = ImageGrab.grab(bbox=(x, y, x + w, y + h), all_screens=True)
+    out = os.path.join(ROOT, "docs", "screenshot-desktop-settings.png")
+    shot.save(out)
+    check("设置窗口真机出图", w > 200 and h > 300, f"{w}x{h} → {os.path.relpath(out, ROOT)}")
+    sp = shot.convert("RGB").load()
+    navy = sum(1 for yy in range(0, shot.height, 2) for xx in range(0, shot.width, 2)
+               if abs(sp[xx, yy][0] - 30) < 18 and abs(sp[xx, yy][1] - 50) < 18 and abs(sp[xx, yy][2] - 100) < 22)
+    white = sum(1 for yy in range(0, shot.height, 2) for xx in range(0, shot.width, 2) if sp[xx, yy] == (255, 255, 255))
+    check("设置窗口是白卡 + 藏青描边（鲸鱼娘设计语言）", navy > 200 and white > 2000,
+          f"藏青 {navy} / 纯白 {white}（每 4 像素采样）")
+    win.destroy()
+    root.destroy()
+except Exception as e:
+    check("设置窗口真机出图", False, str(e)[:80])
 
 failed = [n for n, ok in results if not ok]
 print("\n" + "─" * 58)
