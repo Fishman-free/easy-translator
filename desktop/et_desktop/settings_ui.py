@@ -94,10 +94,22 @@ class SettingsWindow(tk.Toplevel if tk else object):
         self.status_lbl.pack(side="right")
 
         # —— 四张卡，与 options/options.html 同序 ——
-        body = tk.Frame(outer, bg=BG)
-        body.pack(fill="both", expand=True)
-        self._cards = tk.Frame(body, bg=BG)
-        self._cards.pack(fill="both", expand=True)
+        # 内容区必须**可滚动**：字段多，窗口不够高时 Tk 的 pack 会给后面的控件
+        # 分不到空间、**直接不映射**（表现为"设置窗口缺一整张卡、用不了"）。
+        canvas = tk.Canvas(outer, bg=BG, highlightthickness=0, bd=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        self._cards = tk.Frame(canvas, bg=BG)
+        inner = canvas.create_window((0, 0), window=self._cards, anchor="nw")
+        self._cards.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(inner, width=e.width))
+        try:
+            canvas.bind_all("<MouseWheel>",
+                            lambda e: canvas.yview_scroll(-int(e.delta / 120), "units"))
+        except Exception:
+            pass
 
         self._card_general()
         self._card_model()
@@ -168,7 +180,9 @@ class SettingsWindow(tk.Toplevel if tk else object):
         c.pack(fill="x", padx=1, pady=1)
         tk.Label(c, text=title.upper(), bg=CARD, fg=MUTED, font=FONT_H2, anchor="w").pack(
             fill="x", padx=14, pady=(12, 4))
-        return tk.Frame(c, bg=CARD)
+        body = tk.Frame(c, bg=CARD)
+        body.pack(fill="both", expand=True, pady=(0, 8))
+        return body
 
     def _row(self, parent, label):
         row = tk.Frame(parent, bg=CARD)

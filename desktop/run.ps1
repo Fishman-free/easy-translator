@@ -1,6 +1,8 @@
 # Easy Translator 桌面伴生 —— 一键启动
 # 用法：右键「使用 PowerShell 运行」，或  powershell -ExecutionPolicy Bypass -File run.ps1
 #        run.ps1 --selftest   只跑自检
+#        run.ps1 --settings   只开设置窗口，不监听
+# 参数原样透传给 python -m et_desktop（新增参数不用再改这个脚本）
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
@@ -12,8 +14,4 @@ if (-not (Test-Path $py)) {
     & $py -m pip install --quiet -r requirements.txt
 }
 
-if ($args -contains "--selftest") {
-    & $py -m et_desktop --selftest
-} else {
-    & $py -m et_desktop
-}
+& $py -m et_desktop @args

@@ -103,6 +103,38 @@ class TestSettingsWindow(unittest.TestCase):
         for want in ["通用", "本地小模型（OPENAI 兼容端点）", "图片取词", "数据",
                      "悬停触发时长", "例句条数", "接口地址", "文本模型", "视觉模型", "超时（毫秒）"]:
             self.assertTrue(any(want in s for s in labels), f"设置窗口缺少「{want}」")
+
+        # 关键：字段必须**可见**（winfo_ismapped）。只查标签文本会漏掉
+        # 「行容器忘了 pack」——那种情况标签存在但整片字段看不见。
+        # 注意顺序：映射状态要等 update() 之后才准（先遍历会整片报 unmapped）。
+        win.deiconify()
+        win.update_idletasks()
+        win.update()
+        visible = []
+
+        def walk_mapped(w):
+            for c in w.winfo_children():
+                if isinstance(c, (tk.Entry, tk.Checkbutton, tk.Scale, tk.Spinbox)):
+                    visible.append((type(c).__name__, bool(c.winfo_ismapped())))
+                walk_mapped(c)
+        walk_mapped(win)
+        invisible = [t for t, m in visible if not m]
+        self.assertGreaterEqual(len(visible), 12, f"字段控件太少：{visible}")
+
+        def chain(w):
+            out = []
+            while w is not None and str(w) != str(win):
+                try:
+                    out.append(f"{w.winfo_class()}{'M' if w.winfo_ismapped() else 'U'}"
+                               f"[{w.winfo_width()}x{w.winfo_height()}]")
+                except Exception:
+                    break
+                w = w.master
+            return " ← ".join(out)
+        dbg = [chain(c) for c in win.winfo_children()
+               if isinstance(c, tk.Frame)] if invisible else []
+        self.assertEqual([], invisible,
+                         f"这些字段没显示出来（容器忘了 pack？）：{invisible}\n祖先链：{dbg[:3]}")
         win.destroy()
         root.destroy()
 
