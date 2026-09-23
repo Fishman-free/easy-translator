@@ -104,7 +104,7 @@ Edge 自带的 PDF 阅读器是浏览器内置页面，任何扩展都注入不�
 npm run verify:all      # 本地总验证：结构 + 单测 + 端到端 + 仓库状态 + 远端 CI 结论
 npm run verify          # 一键：结构校验 + 单元测试 + 端到端（CI 用的就是这条）
 npm run check           # 结构校验：manifest 合法性、引用文件存在性、首方 JS 语法、关键资源非空
-npm test                # 单元测试（25 项：英文判定 / 取词边界 / 响应归一化 / 模型输出容错 / 工具链）
+npm test                # 单元测试（27 项：英文判定 / 取词边界 / 单词枚举 / 响应归一化 / 模型输出容错 / 工具链）
 npm run test:e2e        # 端到端：headless Edge 真机加载扩展 + CDP 派发真实鼠标事件
 npm run screenshot      # 开发用真机截图（docs/screenshot-*.png）
 
@@ -122,7 +122,7 @@ python tools/make-demo-pdf.py       # 商店截图用的演示 PDF
 > 找不到浏览器时可用 `ET_BROWSER=<浏览器可执行文件路径> npm run test:e2e` 显式指定；
 > 浏览器发现顺序见 `tools/lib/browser.mjs`（Windows / macOS / Linux 均已覆盖）。
 
-E2E 覆盖的场景（本机 23 项 / CI 20 项，全部通过才算可交付）：
+E2E 覆盖的场景（本机 29 项 / CI 26 项，全部通过才算可交付）：
 
 ```
 ✔ 内容脚本注入（隔离世界已创建）
@@ -131,6 +131,7 @@ E2E 覆盖的场景（本机 23 项 / CI 20 项，全部通过才算可交付）
 ✔ 悬停英文：弹出卡片（word / source 均正确）
 ✔ 悬停后光标持续小幅漂移：卡片仍在（真实鼠标永远不会完全静止）
 ✔ 卡片被收起后，光标仍停在同一词上继续微动 → 卡片自行恢复（不再卡死）
+✔ 取词灵敏度：中英混排无分隔符 / 9px 极小字号 / user-select:none 文本，词心与贴缝两种落点都取到正确词
 ✔ 页面无 JS 异常
 ✔ 网页跨源请求仍带 Origin（证明 DNR 规则未误伤网页自身请求）
 ✔ popup / options 页面正常渲染且无 JS 异常

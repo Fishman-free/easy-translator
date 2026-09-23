@@ -173,6 +173,32 @@ test('normalizeModel 对垃圾输出返回 null', () => {
   assert.equal(ET.normalizeModel('{"word":"x"}', 'x'), null);   // 无任何可用内容
 });
 
+test('wordsIn 枚举文本里的可查英文单词（中英混排/标点/噪声）', () => {
+  const words = (t) => ET.wordsIn(t).map((w) => w.word);
+
+  assert.deepEqual(words('这是test词，中文hello世界'), ['test', 'hello']);
+  assert.deepEqual(words('紧贴着的serendipity也不能漏'), ['serendipity']);
+  assert.deepEqual(words('The quick brown fox'), ['The', 'quick', 'brown', 'fox']);
+  assert.deepEqual(words('COVID-19 与 abc'), ['COVID', 'abc']);
+  assert.deepEqual(words('hello, world!'), ['hello', 'world']);
+  assert.deepEqual(words('这是一段纯中文'), []);
+  assert.deepEqual(words(''), []);
+  assert.deepEqual(words('1234 56.78'), []);
+
+  // 区间必须能直接喂给 Range.setStart/setEnd（几何兜底依赖它）
+  const first = ET.wordsIn('这是test词')[0];
+  assert.equal('这是test词'.slice(first.start, first.end), 'test');
+});
+
+test('wordsIn 与 extractWordAt 的准入判定一致（同一道闸门）', () => {
+  // isEnglishWord 拒绝的（长度<2、无元音的长串、连续连字符）在 wordsIn 里也必须被拒绝
+  for (const bad of ['a', 'xzqwt', "can't--t"]) {
+    assert.equal(ET.isEnglishWord(bad), false);
+    assert.deepEqual(ET.wordsIn('中文 ' + bad + ' 中文').map((w) => w.word), [],
+      '被闸门拒绝的词不该出现在候选里：' + bad);
+  }
+});
+
 test('pickWordFromVision 只放行合法英文单词', () => {
   assert.equal(ET.pickWordFromVision('{"word":"example"}'), 'example');
   assert.equal(ET.pickWordFromVision('```json\n{"word":"Hello!"}\n```'), 'Hello');

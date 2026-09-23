@@ -44,5 +44,20 @@
     <img id="img-cn" src="fixtures/cn-only.png" alt="这是中文">
     <p class="tip">识别不到英文单词时，前端应当静默——不出现任何卡片。</p>
   </section>
+
+  <section>
+    <h2>⑥ 中英混排、中间没有分隔符（应弹窗）</h2>
+    <p id="mixed">这是test词，中文hello世界，紧贴着的serendipity也不能漏。</p>
+  </section>
+
+  <section>
+    <h2>⑦ 极小字号（应弹窗）</h2>
+    <p id="tiny" style="font-size:9px;line-height:1.6">Tiny text with serendipity inside should still be hittable.</p>
+  </section>
+
+  <section>
+    <h2>⑧ 不可选中文本 user-select:none（应弹窗）</h2>
+    <p id="noselect" style="user-select:none;-webkit-user-select:none">Labels like serendipity often live inside user-select:none UI.</p>
+  </section>
 </body>
 </html>

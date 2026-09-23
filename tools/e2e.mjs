@@ -211,6 +211,41 @@ async function main() {
       return json;
     };
 
+    /** 指定容器内某个英文单词的中心点（用于中英混排 / 小字号 / 不可选中文本的灵敏度用例）
+     *  先把容器滚入视口中央再取坐标——否则目标在首屏之外时，坐标会落到视口外（悬停必然打偏）。 */
+    const centerOfWordIn = async (selector, word) => {
+      await page.evaluate(`(() => {
+        const host = document.querySelector(${JSON.stringify(selector)});
+        if (host) host.scrollIntoView({ block: 'center', behavior: 'instant' });
+      })()`);
+      await sleep(600);   // 等滚动落定：滚动会收起卡片，且坐标要以新位置为准
+      return page.evaluate(`(() => {
+        const host = document.querySelector(${JSON.stringify(selector)});
+        if (!host) return null;
+        const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+        while (w.nextNode()) {
+          const node = w.currentNode;
+          const t = node.textContent || '';
+          const i = t.toLowerCase().indexOf(${JSON.stringify(word.toLowerCase())});
+          if (i === -1) continue;
+          const range = document.createRange();
+          range.setStart(node, i);
+          range.setEnd(node, i + ${word.length});
+          const box = Array.from(range.getClientRects()).filter((x) => x.width > 1)[0];
+          if (!box) continue;
+          return {
+            x: Math.round(box.left + box.width / 2),
+            y: Math.round(box.top + box.height / 2),
+            // 贴缝点：词右边缘外 2px（真人手势很难正好压在词心，实测这里最容易「取到旁边的词」或「不弹窗」）
+            gapX: Math.round(box.right + 2),
+            inViewport: box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth,
+            fontPx: Math.round(box.height)
+          };
+        }
+        return null;
+      })()`);
+    };
+
     const cardState = () => page.evaluate(`(() => {
       const host = document.querySelector('[data-easy-translator="card"]');
       if (!host) return { exists: false };
@@ -274,7 +309,34 @@ async function main() {
     check('同词上卡片被收起后能自行恢复（不再卡死）', !!recovered,
       JSON.stringify(recovered || afterBlur));
 
-    /* —— 场景 3b：DNR 作用域回归（网页自身的跨源请求不应被剥离 Origin）—— */
+    /* —— 场景 3c：取词灵敏度（中英混排 / 极小字号 / user-select:none）—— */
+    // 用户实测反馈的三类「鼠标在词上却取不到词」。这里逐个钉住，
+    // 兜底路径（多点探测 + 矩形就近）失效时应当立刻变红。
+    const sensitivity = [
+      ['#mixed', '中英混排无分隔符（紧贴中文）'],
+      ['#tiny', '极小字号（9px）'],
+      ['#noselect', 'user-select:none 文本']
+    ];
+    for (const [sel, label] of sensitivity) {
+      const pt = await centerOfWordIn(sel, 'serendipity');
+      if (!pt) { check('灵敏度：' + label, false, '测试页缺少 ' + sel); continue; }
+      if (!pt.inViewport) { check('灵敏度：' + label, false, '滚入视口后坐标仍越界：' + JSON.stringify(pt)); continue; }
+
+      for (const [where, x] of [['词心', pt.x], ['贴缝（右边缘外 2px）', pt.gapX]]) {
+        await page.mouseMove(Math.max(4, pt.x - 80), pt.y);
+        await sleep(250);
+        await page.mouseMove(x, pt.y);
+        await sleep(DWELL_WAIT_MS + 2500);
+        st = await cardState();
+        check('灵敏度：' + label + ' @ ' + where + ' → 取到正确词',
+          st.exists && st.state === 'result' && String(st.word).toLowerCase() === 'serendipity',
+          JSON.stringify(st) + ' 命中点=' + x + ',' + pt.y + ' 词高=' + pt.fontPx + 'px');
+        await page.mouseMove(4, 4);
+        await sleep(400);
+      }
+    }
+
+    /* —— 场景 3d：DNR 作用域回归（网页自身的跨源请求不应被剥离 Origin）—— */
     const echo = await page.evaluate(
       `fetch('http://127.0.0.1:${ECHO_PORT}/__echo-origin').then(r => r.json()).catch(e => ({ error: String(e) }))`
     );

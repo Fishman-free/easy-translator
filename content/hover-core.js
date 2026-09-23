@@ -371,7 +371,22 @@
       return false;
     }
 
-    function wordAtPoint(x, y) {
+    /** 文本节点内 [start,end) 的首个可见矩形（跨行时取第一段） */
+    function rectIn(node, start, end) {
+      try {
+        var r = doc.createRange();
+        r.setStart(node, start);
+        r.setEnd(node, end);
+        var rects = r.getClientRects();
+        for (var i = 0; i < rects.length; i++) {
+          if (rects[i].width > 0.5) return rects[i];
+        }
+      } catch (e) { /* 忽略 */ }
+      return null;
+    }
+
+    /** 单点：caret 落点 → 单词（原逻辑；命中最准，作为第一优先） */
+    function wordFromCaret(x, y) {
       var range = null;
       try {
         if (doc.caretRangeFromPoint) {
@@ -390,11 +405,83 @@
       if (!node || node.nodeType !== 3) return null;
       if (card && card.host && (node === card.host || card.host.contains(node))) return null;
 
-      var text = node.textContent || '';
-      var found = ET.extractWordAt(text, range.startOffset);
+      var found = ET.extractWordAt(node.textContent || '', range.startOffset);
       if (!found.word) return null;
       if (isEditable(node.parentElement)) return null;
-      return found;
+      return { node: node, word: found.word, start: found.start, end: found.end };
+    }
+
+    /* 落点微调表：caret 在中英混排、极小字号下常落到相邻字符上（鼠标明明在词里却没取到词）。
+       横向给到 ±4px（字符边界错位主要发生在横向），纵向只 ±2px，避免跨到相邻行。 */
+    var PROBES = [[0, 0], [-2, 0], [2, 0], [0, -2], [0, 2], [-4, 0], [4, 0]];
+
+    function wordByProbing(x, y) {
+      for (var i = 0; i < PROBES.length; i++) {
+        var hit = wordFromCaret(x + PROBES[i][0], y + PROBES[i][1]);
+        if (hit) return hit;
+      }
+      return null;
+    }
+
+    /* 几何兜底：caret 不可用、或 caret 吸到了相邻词时，按矩形就近匹配。
+       容差 3px——空白处与中文上依旧不触发；缝隙处左偏置（与「紧贴标点归属左侧单词」一致）。 */
+    var GEOM_TOL = 3;
+    var GEOM_MAX_NODES = 80;
+    var LEFT_BIAS = 1.5;
+
+    /** 落点是否真的落在该词的矩形内（caret 结果的可信度判据） */
+    function containsPoint(x, y, hit) {
+      var box = rectIn(hit.node, hit.start, hit.end);
+      if (!box) return false;
+      return x >= box.left - 0.5 && x <= box.right + 0.5 && y >= box.top - 0.5 && y <= box.bottom + 0.5;
+    }
+
+    function wordByGeometry(x, y) {
+      var el = null;
+      try { el = doc.elementFromPoint(x, y); } catch (e) { return null; }
+      if (!el) return null;
+      if (card && card.host && (el === card.host || card.host.contains(el))) return null;
+      if (isEditable(el)) return null;
+
+      var best = null;
+      var bestDist = Infinity;
+      var scanned = 0;
+      var walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+      var node;
+      while ((node = walker.nextNode()) && scanned < GEOM_MAX_NODES) {
+        var text = node.textContent || '';
+        if (!text || !/[A-Za-z]/.test(text)) continue;
+        if (isEditable(node.parentElement)) continue;
+        var words = ET.wordsIn(text);
+        if (!words.length) continue;
+        scanned++;
+        for (var i = 0; i < words.length; i++) {
+          var box = rectIn(node, words[i].start, words[i].end);
+          if (!box) continue;
+          var dx = Math.max(box.left - x, 0, x - box.right);
+          var dy = Math.max(box.top - y, 0, y - box.bottom);
+          if (dx > GEOM_TOL || dy > GEOM_TOL) continue;
+          var dist = dx + dy * 2 + (box.left >= x ? LEFT_BIAS : 0);   // 竖向偏离更贵；缝隙处左偏置
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = { word: words[i].word, start: words[i].start, end: words[i].end };
+          }
+        }
+      }
+      return best;
+    }
+
+    /**
+     * 落点 → 单词。
+     * ① caret 落点解析：仅在「落点确实在词内」时采信——极小字号下 caret 会吸到相邻词上，
+     *    那种结果比不弹窗更糟（用户会看到另一个词的释义）。
+     * ② ±2/±4px 多点探测：caret 落在缝隙/标点上时，从邻近点把它捞回来。
+     * ③ 按矩形就近匹配：caret 完全不可用（user-select:none、无插入点的光标上下文）时的兜底。
+     */
+    function wordAtPoint(x, y) {
+      var caretHit = wordByProbing(x, y);
+      var hit = (caretHit && containsPoint(x, y, caretHit)) ? caretHit : (wordByGeometry(x, y) || caretHit);
+      return hit ? { word: hit.word, start: hit.start, end: hit.end } : null;
     }
 
     function elementLooksTextless(node) {
