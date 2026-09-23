@@ -1,4 +1,4 @@
-# Easy Translator 桌面伴生 —— 一键启动
+﻿# Easy Translator 桌面伴生 —— 一键启动
 # 用法：右键「使用 PowerShell 运行」，或  powershell -ExecutionPolicy Bypass -File run.ps1
 #        run.ps1 --selftest   只跑自检
 #        run.ps1 --settings   只开设置窗口，不监听
