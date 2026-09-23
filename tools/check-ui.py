@@ -112,14 +112,20 @@ mh = round(art.height * mw / art.width)
 mx, my = cw - mw - 6, (ch - 34) - 2 - mh
 her_left = sum(1 for y in range(my + int(mh * 0.45), my + mh) for x in range(mx, mx + 8) if cpx[x, y][3] > 120)
 check("渲染图里她的左半边也在", her_left > 8, "她左缘不透明 %d px" % her_left)
+# 尾点已按用户要求去掉 —— 这里断言「她嘴的左上就是立绘本身」，谁再画回小圆就变红
+# （旧断言是"尾点末端贴嘴"，尾点删除后它正确地报了红：检查与设计要同步改）
 mouth = (mx + int(mw * MOUTH[0]), my + int(mh * MOUTH[1]))
-best = min(((x, y) for y in range(max(0, mouth[1] - 60), min(ch, mouth[1] + 2))
-            for x in range(max(0, mouth[0] - 70), mouth[0] + 2)
-            if cpx[x, y][3] > 120 and cpx[x, y][:3] == NAVY),
-           key=lambda p: (p[0] - mouth[0]) ** 2 + (p[1] - mouth[1]) ** 2, default=None)
-check("尾点末端贴着她的嘴（她说出来的感觉）",
-      best is not None and abs(best[0] - mouth[0]) <= 14 and abs(best[1] - mouth[1]) <= 14,
-      "嘴%s 最近描边%s" % (mouth, best))
+probe_pt = (mouth[0] - 24, mouth[1] - 17)            # 尾点旧圆心
+art_px = art.load()
+ax = min(art.width - 1, max(0, round((probe_pt[0] - mx) * art.width / mw)))
+ay = min(art.height - 1, max(0, round((probe_pt[1] - my) * art.height / mh)))
+want = art_px[ax, ay]
+got = cpx[probe_pt[0], probe_pt[1]]
+# 立绘在该点透明 → 渲染里应是白底气泡；有像素 → 应与立绘一致（容抗锯齿/羽化）
+expect = (255, 255, 255) if want[3] < 120 else want[:3]
+check("她嘴的左上就是立绘本身（尾点已按要求去掉，不许再压脸）",
+      all(abs(got[i] - expect[i]) <= 14 for i in range(3)),
+      f"渲染 {got[:3]} vs 应为 {expect[:3]}（旧尾点圆心 {probe_pt}）")
 
 # 释义必须整句横排 —— 曾因「存裸 ls / 取 [0]」被排成一字一行（用户：太丑了）
 long_card = ui.render_card(
@@ -152,9 +158,9 @@ css_mouth = (m_left + round(m_w * MOUTH[0]), m_top + round(m_h * MOUTH[1]))
 dots_right, dots_bottom = CARD_W - t_right, CARD_H - t_bottom + 6   # 第二颗点有 -6px 下边距
 check("CSS 里她贴在整个对话框的右下角", m_right <= 10 and m_bottom <= 4,
       "right=%s bottom=%s" % (m_right, m_bottom))
-check("CSS 尾点末端落在她的嘴上", abs(dots_right - css_mouth[0]) <= 6 and abs(dots_bottom - css_mouth[1]) <= 6,
-      "嘴%s 尾点末端(%d,%d)" % (css_mouth, dots_right, dots_bottom))
 check("CSS 是白底气泡（不透明背景）", "background: #ffffff" in css and ".et-card" in css)
+check("CSS 里尾点已按要求去掉（.et-tail/.et-dot 不再有绘制规则）",
+      ".et-tail {" not in css and ".et-dot {" not in css)
 
 print("\n⑤ 资产新鲜度（预览图是否由当前立绘生成）")
 prev_path = os.path.join(ROOT, "docs", "mascot-preview.png")
