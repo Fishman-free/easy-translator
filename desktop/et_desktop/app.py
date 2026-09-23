@@ -148,6 +148,8 @@ class Watcher(threading.Thread):
         data = lookup.lookup(word, self.cfg)
         if not data:
             return                       # 查不到就静默，不打扰
+        if not (data.get("poses") or data.get("examples")):
+            return                       # 只有音标没有释义 → 不弹空壳（宁可不弹）
         try:
             img = self.render(data)
             self.panel.after(0, lambda: self.panel.show_bubble(img, x, y, word))
@@ -263,6 +265,11 @@ class App:
         got = lookup.lookup("hello", self.cfg)
         return bool(got), (f"✔ {got.get('source') or '查到 hello'}" if got else "✘ 查不到 hello（检查网络或本地模型）")
 
+    @staticmethod
+    def warmup(cfg):
+        """后台预热视觉模型（微信/游戏等无文字界面要靠它）—— 冷启动 1–3 分钟，别挡界面。"""
+        threading.Thread(target=lookup.warmup_vision, args=(cfg,), daemon=True).start()
+
     def stop(self):
         self.watcher.stop_flag = True
         self.win.destroy()
@@ -285,6 +292,7 @@ def main(argv=None) -> int:
     root.withdraw()
 
     app = App(cfg, root, lambda: app.stop())
+    app.warmup(cfg)                      # 预热视觉模型：微信/游戏等无文字界面的取词靠它
     if not args.settings:
         app.watcher.start()
     root.protocol("WM_DELETE_WINDOW", app.stop)

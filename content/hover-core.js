@@ -712,7 +712,13 @@
       sendMessage({ type: 'lookup', word: word }, function (res) {
         if (myToken !== token) return;
         if (!res || !res.ok) { handleFailure(res, info); return; }
-        renderResult(res.data, {
+        var d = res.data;
+        // 只有音标、没有释义/例句（品牌词、缩写时会出现）→ 不弹空壳，给一句话说明
+        if (!d || (!(d.poses && d.poses.length) && !(d.examples && d.examples.length))) {
+          showMessage('没有查到释义', '『' + word + '』在词典里没有中文释义（品牌词/缩写常这样）。', info, 'tip');
+          return;
+        }
+        renderResult(d, {
           engine: res.engine,
           cached: res.cached
         }, info);
@@ -755,7 +761,11 @@
 
     function handleFailure(res, info) {
       var err = (res && res.error) || '未知错误';
-      if (err === 'not-english' || err === 'disabled' || err === 'image-ocr-off') return;   // 静默：不打扰浏览
+      if (err === 'not-english' || err === 'disabled' || err === 'image-ocr-off') {
+        // 静默不打扰，但**必须把 loading 卡收掉** —— 否则只留一个空白气泡挂在屏幕上
+        hideCard(true);
+        return;
+      }
       if (err === 'need-permission') {
         if (!warned.permission) {
           warned.permission = true;

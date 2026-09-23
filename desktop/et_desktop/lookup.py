@@ -331,6 +331,25 @@ def lookup_model(word: str, cfg: dict):
     return normalize_model(content, word)
 
 
+def warmup_vision(cfg: dict) -> bool:
+    """把视觉模型拉进内存。冷启动 1–3 分钟 —— 不预热的话，第一次在
+    微信/游戏这类「辅助功能看不到文字」的界面上取词必然等很久甚至失败（用户会以为坏了）。"""
+    m = (cfg or {}).get("model") or {}
+    base, model = (m.get("baseUrl") or "").rstrip("/"), m.get("visionModel") or ""
+    if not base or not model:
+        return False
+    body = {"model": model, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}
+    try:
+        req = urllib.request.Request(base + "/chat/completions", data=json.dumps(body).encode("utf-8"),
+                                     headers={"Content-Type": "application/json",
+                                              "Authorization": "Bearer " + (m.get("apiKey") or "none")})
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            resp.read()
+        return True
+    except Exception:
+        return False
+
+
 def lookup(word: str, cfg: dict):
     """按引擎顺序取词，返回统一结构或 None。"""
     eng = (cfg or {}).get("engine") or "auto"

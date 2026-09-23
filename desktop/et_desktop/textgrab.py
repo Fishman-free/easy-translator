@@ -125,7 +125,9 @@ def word_at_point_ocr(x: int, y: int, cfg: dict):
         req = urllib.request.Request(
             base + "/chat/completions", data=json.dumps(body).encode("utf-8"),
             headers={"Content-Type": "application/json", "Authorization": "Bearer " + (cfg.get("apiKey") or "none")})
-        with urllib.request.urlopen(req, timeout=12.0) as resp:
+        # 冷启动 1–3 分钟：超时给足余量，否则「第一次永远查不到」（用户会以为功能坏了）。
+        # 启动时另有 warmup_vision() 把模型预热进内存，正常路径只要几百毫秒。
+        with urllib.request.urlopen(req, timeout=float(cfg.get("visionTimeoutSec") or 90.0)) as resp:
             raw = json.loads(resp.read().decode("utf-8"))
         content = raw["choices"][0]["message"]["content"]
     except Exception:
