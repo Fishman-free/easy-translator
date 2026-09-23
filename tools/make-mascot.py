@@ -106,11 +106,28 @@ def extract_character(im: Image.Image, zone=None, seed=None):
             else:
                 apx[x, y] = (0, 0, 0, 0)
 
-    # 边缘 1px 羽化：原图在画框右/下把人切开了（切口是硬边深色），而她自然轮廓那侧
-    # 是浅色抗锯齿边 —— 两边观感会「颜色不一样」。把 alpha 羽化一层，硬切边就融进白底。
+    # 边缘 1px 羽化：把 alpha 羽化一层，抗锯齿边观感更干净
     from PIL import ImageFilter
     alpha = art.split()[3].filter(ImageFilter.GaussianBlur(0.6))
     art.putalpha(alpha)
+
+    # 原图在画框右/下把她**切开**了（切口穿过深色头发/描边 → 硬切深边），
+    # 而她自然轮廓那侧是浅色羽化边 —— 用户看到的就是「两边颜色不一样」。
+    # 让贴着右/下画框的 alpha 渐隐 4px，硬切口就融进白底，两侧观感一致。
+    apx2 = art.load()
+    fade = 4
+    for y in range(art.height):
+        for x in range(art.width):
+            r, g, b, a = apx2[x, y]
+            if a == 0:
+                continue
+            k = 1.0
+            if x >= art.width - fade:
+                k = min(k, (art.width - x) / fade)
+            if y >= art.height - fade:
+                k = min(k, (art.height - y) / fade)
+            if k < 1.0:
+                apx2[x, y] = (r, g, b, int(a * k))
     info = {"box": box, "size": art.size, "seed": seed, "opaque": len(solid),
             "zone": zone}
     # 她的嘴部位置（肤色区中心）→ 供 UI 把对话气泡的尾巴对准她的嘴
