@@ -223,18 +223,20 @@ def render_card(entry: dict, mascot: Image.Image, scale: float = 1.0) -> Image.I
             y += int(f_small * 1.5)
         y += gap
 
-    # —— 尾点：两颗「白底 + 藏青描边」小圆，挂在气泡右下角外（与原图同款）——
+    # —— 鲸鱼娘：贴在整个对话框的右下角（白底内，不透明） ——
+    her = mascot.resize((mw, mh), Image.LANCZOS)
+    mx, my = W - mw - int(6 * s), by1 - int(2 * s) - mh
+    canvas.paste(her, (mx, my), her)
+
+    # —— 尾点：两颗「白底 + 藏青描边」小圆，由气泡**指向她的嘴** ——
+    # 她的嘴在立绘的 (51.4%, 70.6%)（tools/make-mascot.py 按肤色像素实测 68.9/134 × 98.9/140）
+    mouth = (mx + int(mw * 0.514), my + int(mh * 0.706))
     r1, r2 = int(6.5 * s), int(4 * s)
-    d1 = (bx1 - int(2 * s) - r1, by1 + int(9 * s) + r1)
-    d2 = (d1[0] + int(11 * s), d1[1] + int(7 * s))
+    d1 = (mouth[0] - int(24 * s), mouth[1] - int(17 * s))
+    d2 = (mouth[0] - int(9 * s), mouth[1] - int(5 * s))
     for (cx, cy), r in ((d1, r1), (d2, r2)):
         draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=PAPER,
                      outline=NAVY, width=max(1, int(BORDER * s)))
-
-    # —— 鲸鱼娘：站在气泡右下角的白色区域里（不透明） ——
-    her = mascot.resize((mw, mh), Image.LANCZOS)
-    mx, my = W - mw - int(10 * s), by1 - int(2 * s) - mh
-    canvas.paste(her, (mx, my), her)
 
     # —— 硬边 alpha：气泡圆角矩形 ∪ 两颗尾点 ∪ 她的轮廓 ——
     mask = Image.new("L", (W, H), 0)
@@ -284,6 +286,18 @@ class Bubble(tk.Toplevel):
         self.geometry(f"{w}x{h}+{int(left)}+{int(top)}")
         self.deiconify()
         self.lift()
+        self._force_topmost()
+
+    def _force_topmost(self):
+        """确保浮层压在其它窗口之上 —— 光靠 wm_attributes('-topmost') 不够可靠。"""
+        try:
+            import win32con
+            import win32gui
+            hwnd = int(self.frame(), 16) or self.winfo_id()
+            win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
+                                  win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
+        except Exception:
+            pass
 
     def hide(self):
         self.withdraw()

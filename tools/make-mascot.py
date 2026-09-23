@@ -49,13 +49,16 @@ def _flood(mask, seeds, w, h):
     return seen
 
 
-def extract_character(im: Image.Image, zone=(94, 48, 198, 196), seed=None):
+def extract_character(im: Image.Image, zone=None, seed=None):
     """→ (裁剪图 RGBA, 说明字典)。剪影已填洞，白衣服不会再被抠掉。
 
-    zone：角色区（不含它自带的气泡与尾点 —— 尾点在 x≈40–64、气泡底边在 x≈38–88，
-    她本人 x≥110）。先限定角色区再取连通块，免得抗锯齿把气泡粘到她身上。
+    **不要用矩形裁剪框**：她左半边（耳朵/头发/袍角，最远到 x≈68）与她自带的气泡、
+    尾点只隔着背景间隙 —— 矩形框要么把她切掉、要么把气泡带进来。正确做法是
+    「取含右下角的连通块」：气泡弧线与两颗尾点是各自独立的连通块，自动排除。
+    zone 参数仅用于实验性调试。
     """
-    im = im.crop(zone)
+    if zone:
+        im = im.crop(zone)
     w, h = im.size
     px = im.load()
     light = [[(px[x, y][0] >= LIGHT and px[x, y][1] >= LIGHT and px[x, y][2] >= LIGHT)
@@ -104,6 +107,16 @@ def extract_character(im: Image.Image, zone=(94, 48, 198, 196), seed=None):
                 apx[x, y] = (0, 0, 0, 0)
     info = {"box": box, "size": art.size, "seed": seed, "opaque": len(solid),
             "zone": zone}
+    # 她的嘴部位置（肤色区中心）→ 供 UI 把对话气泡的尾巴对准她的嘴
+    sx = sy = sn = 0
+    for (x, y) in solid:
+        r, g, b = im.getpixel((x, y))[:3]
+        if r > 235 and 215 < g < 250 and 205 < b < 245 and r > b + 8:
+            sx += x
+            sy += y
+            sn += 1
+    info["mouth"] = (round((sx / sn) - box[0], 1), round((sy / sn) - box[1], 1)) if sn > 20 else None
+    info["skin_px"] = sn
     return art, info
 
 
@@ -153,6 +166,7 @@ def main() -> int:
         art.save(OUT)
         prev = make_preview(art, os.path.join(REPO, "docs", "mascot-preview.png"))
         print("剪影框:", info["box"], "→ 尺寸", info["size"], "不透明像素", info["opaque"])
+        print("嘴部位置（相对剪影左上）:", info.get("mouth"), "肤色像素", info.get("skin_px"))
         print("写出:", OUT, os.path.getsize(OUT), "字节｜预览:", prev)
     else:
         print(__doc__)

@@ -54,19 +54,41 @@ def main() -> int:
             edit = auto.DocumentControl(searchFromControl=win, searchDepth=8)
         check("找到文本控件", edit.Exists(2, 1), edit.ControlTypeName)
 
+        r = None
+        # 窗口可能被最小化（Windows 会报 -32000 附近的坐标，落点根本不在屏幕上），
+        # 所以先恢复并摆到固定位置再取样 —— 与「测试目标要先滚入视口」同一类问题。
+        try:
+            import win32gui
+            hwnd = win.NativeWindowHandle
+            win32gui.ShowWindow(hwnd, 9)                    # SW_RESTORE
+            win32gui.MoveWindow(hwnd, 60, 60, 1100, 700, True)
+            win32gui.SetForegroundWindow(hwnd)
+        except Exception as e:
+            print("    [注] 摆放窗口失败:", str(e)[:60])
+        time.sleep(0.8)
+
         r = edit.BoundingRectangle
         pattern = edit.GetTextPattern()
         check("文本控件提供 TextPattern", pattern is not None)
 
         # ② 英文词上取词
         got = None
+        tried = []
         for frac in (0.10, 0.16, 0.22, 0.30, 0.38, 0.46):
             x, y = int(r.left + r.width() * frac), int(r.top + 14)
             word, src = textgrab.word_at_point(x, y, cfg)
+            tried.append("%d,%d=%r" % (x, y, word))
             if word:
                 got = (word, src, x, y)
                 break
-        check("光标在英文词上 → 取到词", bool(got), got and "%s（%s @ %d,%d）" % (got[0], got[1], got[2], got[3]))
+        doc_text = ""
+        try:
+            doc_text = (pattern.DocumentRange.GetText(60) or "").replace("\r", "⏎")
+        except Exception:
+            pass
+        check("光标在英文词上 → 取到词", bool(got),
+              (got and "%s（%s @ %d,%d）" % (got[0], got[1], got[2], got[3]))
+              or ("控件矩形 %s｜全文前 60 字 %r｜采样：%s" % (r, doc_text, "；".join(tried))))
         if not got:
             return finish()
 
@@ -120,15 +142,22 @@ def main() -> int:
         bubble = ui.Bubble(root)
         x, y = app_mod.cursor_pos()
         bubble.show(img, x, y)
+        # 按浮层的真实窗口位置截屏 —— 浮层在靠近屏幕边缘时会翻到光标另一侧，
+        # 不能假定它一定在光标右下方（那样截屏会扑空，看起来像"没显示"）。
         root.update()
         time.sleep(0.6)
+        root.update()
+        bx, by = bubble.winfo_rootx(), bubble.winfo_rooty()
+        bw, bh = bubble.winfo_width(), bubble.winfo_height()
+        visible = bool(bubble.winfo_viewable())
         from PIL import ImageGrab
-        shot = ImageGrab.grab(bbox=(x - 40, y - 40, x + img.size[0] + 60, y + img.size[1] + 60), all_screens=True)
+        shot = ImageGrab.grab(bbox=(bx, by, bx + bw, by + bh), all_screens=True)
         probe = os.path.join(os.environ.get("TEMP", "."), "et-desktop-e2e-shot.png")
         shot.save(probe)
-        # 看浮层区域里有没有藏青描边像素（=气泡确实画在了屏幕上）
-        navy = sum(1 for px in shot.convert("RGB").getdata() if abs(px[0] - 30) < 24 and abs(px[1] - 50) < 24 and abs(px[2] - 100) < 30)
-        check("浮层真的显示在屏幕上（截到藏青描边）", navy > 200, "藏青像素 %d 个，截图 %s" % (navy, probe))
+        navy = sum(1 for px in shot.convert("RGB").getdata()
+                   if abs(px[0] - 30) < 24 and abs(px[1] - 50) < 24 and abs(px[2] - 100) < 30)
+        check("浮层真的显示在屏幕上（截到藏青描边）", navy > 200,
+              "窗口 (%d,%d) %dx%d viewable=%s｜藏青像素 %d｜截图 %s" % (bx, by, bw, bh, visible, navy, probe))
         bubble.hide()
         root.destroy()
     finally:
