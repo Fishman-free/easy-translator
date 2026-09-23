@@ -65,10 +65,7 @@
       // 鲸鱼娘的对话气泡：释义全部装进气泡内，她本人站在卡片右下角
       var bubble = el('div', 'et-bubble');
       box.appendChild(bubble);
-      var tail = el('div', 'et-tail');
-      tail.appendChild(el('i', 'et-dot'));
-      tail.appendChild(el('i', 'et-dot et-dot-sm'));
-      box.appendChild(tail);
+      // 尾点已按用户要求去掉（DOM 不再造它 —— 之前 CSS 删了、DOM 还在造，是死元素）
       var mascot = doc.createElement('img');
       mascot.className = 'et-mascot';
       mascot.alt = '鲸鱼娘';

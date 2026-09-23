@@ -252,7 +252,7 @@
 
 /* —— 无动效偏好：全部关掉 —— */
 @media (prefers-reduced-motion: reduce) {
-  .et-card, .et-mascot, .et-dot, .et-loading, .et-hint, .et-btn {
+  .et-card, .et-mascot, .et-loading, .et-hint, .et-btn {
     animation: none !important;
     transition: none !important;
   }
