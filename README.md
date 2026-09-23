@@ -67,9 +67,14 @@ ollama pull qwen2.5vl:3b     # 图片取词（可选），约 3 GB
 `desktop/` 是一个 Windows 伴生程序，**同样的悬停规则、同样的气泡 UI**（白底 + 藏青描边 + 尾点 + 右下角鲸鱼娘）。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File desktop\run.ps1   # 首次运行自动装依赖
+powershell -ExecutionPolicy Bypass -File desktop\run.ps1   # 首次自动装依赖并启动
+python -m et_desktop --selftest                            # 自检：取词 + 渲染 + 引擎连通 + 设置窗口
 ```
 
+**它有自己的设置窗口**（就是这个伴生程序的主界面）：与扩展设置页同一套布局和字段
+（通用 / 本地小模型 / 图片取词 / 数据），视觉是同一套鲸鱼娘设计语言——白卡 + 藏青描边，
+标题做成她的对话气泡（带尾点）+ 右上角立绘。字段名与扩展的 `lib/settings-core.js` 一致，
+并有测试逐键比对防漂移。
 取词分三层：**① UIA 辅助功能**（绝大多数应用）→ **② 有文字但不是英文就静默**（中文上绝不弹窗）→ **③ 视觉模型 OCR 兜底**（图片/自绘 UI）。
 详见 [`desktop/README.md`](desktop/README.md)，其中 `tests/test_parity.py` 保证它与浏览器扩展**逐字段同构**。
 

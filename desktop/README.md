@@ -9,11 +9,16 @@ UI 与浏览器扩展同一套设计语言：**白底气泡 + 藏青描边 + 两
 
 ```powershell
 # 首次运行会自动建 .venv 并装依赖（Pillow / uiautomation）
-powershell -ExecutionPolicy Bypass -File run.ps1            # 启动（带控制面板）
+powershell -ExecutionPolicy Bypass -File run.ps1            # 启动（打开设置窗口并监听）
+powershell -ExecutionPolicy Bypass -File run.ps1 --settings # 只改设置、不监听
 powershell -ExecutionPolicy Bypass -File run.ps1 --selftest # 只跑自检
 ```
 
-控制面板：启用/停用、驻留秒数（2–10 秒可调）、退出。
+**设置窗口就是这个伴生程序的主界面**（`et_desktop/settings_ui.py`）：与扩展设置页
+（`options/options.html`）同一套布局与字段 —— 通用 / 本地小模型 / 图片取词 / 数据 四张卡，
+同样的行式与说明文字，同样的「测试文本查词」按钮；视觉也是同一套鲸鱼娘设计语言：
+白卡 + 藏青 `#1E3264` 描边/强调 + 标题做成她的对话气泡（带两颗尾点）+ 右上角立绘。
+顶部状态行可直接启用/暂停，底部可退出。
 鼠标停在任意英文单词上达到设定秒数即弹出气泡；移入气泡可钉住，点击复制该词，移开即收起。
 
 ## 取词是怎么做到的（优先级与产品铁律）
@@ -33,7 +38,9 @@ powershell -ExecutionPolicy Bypass -File run.ps1 --selftest # 只跑自检
 - **本地小模型**（任何 OpenAI 兼容端点，默认 Ollama `http://127.0.0.1:11434/v1` + `qwen2.5:1.5b`）
 - 视觉兜底默认 `qwen2.5vl:3b`（可关）
 
-配置存 `%APPDATA%\EasyTranslator\config.json`。
+配置存 `%APPDATA%\EasyTranslator\config.json`，字段名与扩展的 `lib/settings-core.js` 一致
+（`dwellMs`、`examplesCount`、`model.*`、`imageOcr.*`）；老配置的 `dwell`/`showExamples`
+读到会自动迁移（秒 → 毫秒）。`tests/test_settings.py` 拿 JS 侧逐键比对防漂移。
 
 ## 测试
 
