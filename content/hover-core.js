@@ -61,6 +61,20 @@
       var box = el('div', 'et-card');
       box.style.display = 'none';
       box.style.pointerEvents = 'auto';
+
+      // 鲸鱼娘的对话气泡：释义全部装进气泡内，她本人站在卡片右下角
+      var bubble = el('div', 'et-bubble');
+      box.appendChild(bubble);
+      var tail = el('div', 'et-tail');
+      tail.appendChild(el('i', 'et-dot'));
+      tail.appendChild(el('i', 'et-dot et-dot-sm'));
+      box.appendChild(tail);
+      var mascot = doc.createElement('img');
+      mascot.className = 'et-mascot';
+      mascot.alt = '鲸鱼娘';
+      mascot.draggable = false;
+      mascot.src = chrome.runtime.getURL('assets/mascot.png');
+      box.appendChild(mascot);
       shadow.appendChild(box);
 
       box.addEventListener('mouseenter', function () {
@@ -73,7 +87,7 @@
       });
 
       (doc.body || doc.documentElement).appendChild(host);
-      card = { host: host, shadow: shadow, root: box };
+      card = { host: host, shadow: shadow, root: box, bubble: bubble };
       return card;
     }
 
@@ -221,9 +235,9 @@
 
     function renderResult(data, meta, anchor) {
       var c = ensureCard();
-      var r = c.root;
+      var r = c.bubble;
       clearNode(r);
-      r.className = 'et-card';
+      r.className = 'et-bubble';
       cancelHint();
 
       // 头部
@@ -308,7 +322,7 @@
       }
       r.appendChild(foot);
 
-      r.style.display = 'block';
+      c.root.style.display = 'block';
       positionCard(anchor);
       setState('result', data.word, meta.engine || data.source || '');
     }
@@ -325,23 +339,23 @@
 
     function showLoading(word, anchor) {
       var c = ensureCard();
-      var r = c.root;
+      var r = c.bubble;
       clearNode(r);
-      r.className = 'et-card';
+      r.className = 'et-bubble';
       var head = el('div', 'et-head');
       head.appendChild(el('span', 'et-word', word));
       r.appendChild(head);
       r.appendChild(el('div', 'et-loading', '查询中…'));
-      r.style.display = 'block';
+      c.root.style.display = 'block';
       positionCard(anchor);
       setState('loading', word);
     }
 
     function showMessage(title, text, anchor, kind) {
       var c = ensureCard();
-      var r = c.root;
+      var r = c.bubble;
       clearNode(r);
-      r.className = 'et-card' + (kind === 'tip' ? ' et-card-tip' : '');
+      r.className = 'et-bubble' + (kind === 'tip' ? ' et-bubble-tip' : '');
       var head = el('div', 'et-head');
       head.appendChild(el('span', 'et-word', title));
       var closeBtn = el('button', 'et-btn et-btn-close', '✕');
@@ -353,7 +367,7 @@
       r.appendChild(head);
       var body = el('div', 'et-message', text);
       r.appendChild(body);
-      r.style.display = 'block';
+      c.root.style.display = 'block';
       positionCard(anchor || { x: 80, y: 80 });
       setState(kind === 'tip' ? 'tip' : 'message', title);
     }

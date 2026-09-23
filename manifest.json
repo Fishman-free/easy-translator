@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Easy Translator — 悬停查词",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "鼠标悬停英文单词约 5 秒，自动弹出中文释义、音标、词性与例句。支持本地小模型（Ollama）与在线词典双引擎，轻量零依赖。",
   "minimum_chrome_version": "110",
   "permissions": ["storage", "activeTab", "webRequest", "declarativeNetRequestWithHostAccess"],
@@ -28,7 +28,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["content/card.css"],
+      "resources": ["content/card.css", "assets/mascot.png"],
       "matches": ["<all_urls>"]
     }
   ],

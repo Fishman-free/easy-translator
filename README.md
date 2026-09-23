@@ -61,6 +61,18 @@ ollama pull qwen2.5vl:3b     # 图片取词（可选），约 3 GB
 - **403 问题**：Ollama 默认拒绝浏览器扩展来源。本扩展用 `declarativeNetRequest` 只对自身发往 `127.0.0.1` / `localhost` 的请求剥离 `Origin` 头，**无需手动配置 `OLLAMA_ORIGINS`**；规则通过 `initiatorDomains` 限定为本扩展，不影响网页自身的请求。
 - **冷启动问题**：CPU 上首次加载模型可能要 1–3 分钟（实测 113 秒）。设置页提供了「**预热模型**」按钮，加载完成后每次查词仅需数百毫秒。
 
+## 整台电脑（桌面伴生）
+
+浏览器之外的英文也能查：记事本、Word、微信、VS Code、PDF 阅读器……
+`desktop/` 是一个 Windows 伴生程序，**同样的悬停规则、同样的气泡 UI**（白底 + 藏青描边 + 尾点 + 右下角鲸鱼娘）。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File desktop\run.ps1   # 首次运行自动装依赖
+```
+
+取词分三层：**① UIA 辅助功能**（绝大多数应用）→ **② 有文字但不是英文就静默**（中文上绝不弹窗）→ **③ 视觉模型 OCR 兜底**（图片/自绘 UI）。
+详见 [`desktop/README.md`](desktop/README.md)，其中 `tests/test_parity.py` 保证它与浏览器扩展**逐字段同构**。
+
 ## 图片文字取词
 
 1. 在扩展弹窗点击「授权」，授予「所有网站」权限（用于截屏与跨站 PDF）

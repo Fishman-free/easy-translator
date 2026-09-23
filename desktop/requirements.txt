@@ -1,0 +1,5 @@
+# Easy Translator 桌面伴生 —— 依赖
+# Python 3.11+（3.14 已实测）
+Pillow>=10.0            # 气泡渲染与截图
+uiautomation>=2.0.29    # Windows 辅助功能取词（UIA TextPattern）
+comtypes>=1.4           # uiautomation 的 COM 依赖
