@@ -64,16 +64,25 @@ ollama pull qwen2.5vl:3b     # 图片取词（可选），约 3 GB
 ## 整台电脑（桌面伴生）
 
 浏览器之外的英文也能查：记事本、Word、微信、VS Code、PDF 阅读器……
-`desktop/` 是一个 Windows 伴生程序，**同样的悬停规则、同样的气泡 UI**（白底 + 藏青描边 + 尾点 + 右下角鲸鱼娘）。
+`desktop/` 是一个 Windows 伴生程序，**同样的悬停规则、同样的气泡 UI**（白底 + 藏青描边 + 右下角鲸鱼娘）。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File desktop\run.ps1   # 首次自动装依赖并启动
+powershell -ExecutionPolicy Bypass -File desktop\stop.ps1  # 关闭（与 run.ps1 对称；会二次确认无残留）
 python -m et_desktop --selftest                            # 自检：取词 + 渲染 + 引擎连通 + 设置窗口
 ```
 
+**关闭桌面伴生**，三种任选：
+
+| 方式 | 操作 |
+|---|---|
+| 界面 | 设置窗口**底部**的「**退出桌面取词**」按钮 |
+| 命令行 | `powershell -ExecutionPolicy Bypass -File desktop\stop.ps1` |
+| 任务管理器 | 结束 `python` 进程（或 `Stop-Process -Id <PID> -Force`） |
+
 **它有自己的设置窗口**（就是这个伴生程序的主界面）：与扩展设置页同一套布局和字段
 （通用 / 本地小模型 / 图片取词 / 数据），视觉是同一套鲸鱼娘设计语言——白卡 + 藏青描边，
-标题做成她的对话气泡（带尾点）+ 右上角立绘。字段名与扩展的 `lib/settings-core.js` 一致，
+标题做成她的对话气泡 + 右上角立绘。字段名与扩展的 `lib/settings-core.js` 一致，
 并有测试逐键比对防漂移。
 取词分三层：**① UIA 辅助功能**（绝大多数应用）→ **② 有文字但不是英文就静默**（中文上绝不弹窗）→ **③ 视觉模型 OCR 兜底**（图片/自绘 UI）。
 详见 [`desktop/README.md`](desktop/README.md)，其中 `tests/test_parity.py` 保证它与浏览器扩展**逐字段同构**。
