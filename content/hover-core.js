@@ -334,20 +334,6 @@
       return b;
     }
 
-    function showLoading(word, anchor) {
-      var c = ensureCard();
-      var r = c.bubble;
-      clearNode(r);
-      r.className = 'et-bubble';
-      var head = el('div', 'et-head');
-      head.appendChild(el('span', 'et-word', word));
-      r.appendChild(head);
-      r.appendChild(el('div', 'et-loading', '查询中…'));
-      c.root.style.display = 'block';
-      positionCard(anchor);
-      setState('loading', word);
-    }
-
     function showMessage(title, text, anchor, kind) {
       var c = ensureCard();
       var r = c.bubble;
@@ -705,7 +691,9 @@
     }
 
     function lookupText(word, info, myToken) {
-      showLoading(word, info);
+      // 用户：「不要先弹一个空白方框」—— 查到内容之前**完全不显示**，
+      // 只记状态（加载壳曾是 et-loading 的空白卡片，看着像空方框）。
+      setState('loading', word);
       sendMessage({ type: 'lookup', word: word }, function (res) {
         if (myToken !== token) return;
         if (!res || !res.ok) { handleFailure(res, info); return; }
