@@ -61,7 +61,12 @@ const mine = Object.entries(exts).filter(([id, m]) =>
 check('Edge 里装了 Easy Translator', mine.length > 0, `配置档共 ${Object.keys(exts).length} 个扩展`);
 
 for (const [id, meta] of mine) {
-  check('扩展处于启用状态（state=1）', meta.state === 1, `state=${meta.state}`);
+  // 未打包（加载解压缩）的扩展在 Secure Preferences 里常常**没有 state 字段** ——
+  // 只有 state===0 或存在 disable_reasons 才算被禁用；缺字段不等于禁用（旧写法会误报）。
+  const why = [];
+  if (meta.state === 0) why.push('state=0');
+  if (Array.isArray(meta.disable_reasons) && meta.disable_reasons.length) why.push(`disable_reasons=${JSON.stringify(meta.disable_reasons)}`);
+  check('扩展处于启用状态', why.length === 0, why.length ? why.join(' ') : '无禁用标记');
   let loaded = meta.path ? path.join(meta.path, 'content', 'hover-core.js') : '';
   if (!loaded || !fs.existsSync(loaded)) {
     // 商店安装：path 为空，实际文件在 Extensions\<id>\<ver>\
