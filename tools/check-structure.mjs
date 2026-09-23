@@ -30,14 +30,24 @@ try {
   add('manifest.json 可解析且为 MV3', manifest.manifest_version === 3, manifest.name);
 
   // Windows PowerShell 5.1 读 .ps1：没有 BOM 就按 GBK 解码中文注释 → 直接 ParserError，
-  // 表现为「双击/运行 run.ps1 就报错、用不了」。所以 .ps1 必须是**带 BOM 的 UTF-8**。
+  // 表现为「双击/运行 run.ps1 就报错、用不了」。所以 **每一个** .ps1 都必须是带 BOM 的 UTF-8。
+  // （此前只写死检查 run.ps1 —— 后加的 stop.ps1 不在闸内，等于没保护。）
   try {
-    const ps1 = fs.readFileSync(path.join(ROOT, 'desktop', 'run.ps1'));
-    const hasBom = ps1[0] === 0xef && ps1[1] === 0xbb && ps1[2] === 0xbf;
-    add('desktop/run.ps1 是带 BOM 的 UTF-8', hasBom,
-      hasBom ? 'EF BB BF' : `前 3 字节 ${ps1[0]},${ps1[1]},${ps1[2]} —— PS 5.1 会按 GBK 读中文注释`);
+    const ps1dir = path.join(ROOT, 'desktop');
+    const ps1s = fs.existsSync(ps1dir)
+      ? fs.readdirSync(ps1dir).filter((n) => n.toLowerCase().endsWith('.ps1'))
+      : [];
+    const badBom = ps1s.filter((n) => {
+      const b = fs.readFileSync(path.join(ps1dir, n));
+      return !(b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf);
+    });
+    add('desktop/*.ps1 全部是带 BOM 的 UTF-8（' + ps1s.length + ' 个）',
+      ps1s.length > 0 && badBom.length === 0,
+      badBom.length
+        ? badBom.join(', ') + ' 缺 BOM —— PS 5.1 会按 GBK 读中文注释'
+        : ps1s.map((n) => n + ' [EF BB BF]').join(', '));
   } catch (e) {
-    add('desktop/run.ps1 是带 BOM 的 UTF-8', false, e.message);
+    add('desktop/*.ps1 全部是带 BOM 的 UTF-8', false, e.message);
   }
 } catch (e) {
   add('manifest.json 可解析且为 MV3', false, e.message);
