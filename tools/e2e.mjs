@@ -384,6 +384,53 @@ async function main() {
       await sleep(400);
     }
 
+    /* —— 场景 3f：滚动中的输入框 & 自动换行长句（消息框打长文的真实形态）—— */
+    // 滚动后同一片区域必须取到「新露出那一行」的词：镜像层若拿旧矩形/旧下标就会取错行。
+    const readBox = (id) => page.evaluate(`(() => {
+      const el = document.getElementById(${JSON.stringify(id)});
+      if (!el) return null;
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const r = el.getBoundingClientRect();
+      return { left: r.left, top: r.top, w: r.width, h: r.height };
+    })()`);
+    const hoverWord = async (x, y, wantSet, label) => {
+      await page.mouseMove(Math.max(4, x - 80), y);
+      await sleep(220);
+      await page.mouseMove(x, y);
+      await sleep(DWELL_WAIT_MS + 2500);
+      st = await cardState();
+      const word = String(st.word || '').toLowerCase();
+      check(label, st.exists && st.state === 'result' && wantSet.includes(word),
+        JSON.stringify(st) + ' 命中点=' + x + ',' + y
+          + ' 取词路径=' + await page.evaluate(`document.documentElement.getAttribute('data-et-trace')`));
+      await page.mouseMove(4, 4);
+      await sleep(500);
+    };
+
+    const sb = await readBox('scrollbox');
+    if (!sb) {
+      check('滚动输入框', false, '测试页缺少 #scrollbox');
+    } else {
+      const sx = Math.round(sb.left + 30);
+      await hoverWord(sx, Math.round(sb.top + sb.h * 0.2), ['alpha'], '滚动输入框：未滚动时上部取到第 1 行的词');
+      await page.evaluate(`(() => { const el = document.getElementById('scrollbox'); el.scrollTop = el.scrollHeight; })()`);
+      await sleep(350);
+      await hoverWord(sx, Math.round(sb.top + sb.h * 0.5), ['foxtrot', 'golf', 'hotel'],
+        '滚动输入框：滚动到底后取到末几行的词（不是旧矩形里的 alpha）');
+    }
+
+    const wb = await readBox('wrapbox');
+    if (!wb) {
+      check('换行长句', false, '测试页缺少 #wrapbox');
+    } else {
+      const wx = Math.round(wb.left + 15);
+      await hoverWord(wx, Math.round(wb.top + 6), ['curiosity'], '换行长句：上缘取到首词');
+      st = null;
+      await hoverWord(wx, Math.round(wb.top + wb.h - 5),
+        ['the', 'good', 'always', 'returns', 'serendipity', 'a', 'and', 'dictionary', 'patient', 'mind', 'rewards'],
+        '换行长句：下缘取到值里的词（且不是首词 —— 纵向按视觉行映射）');
+    }
+
     /* —— 场景 3d：DNR 作用域回归（网页自身的跨源请求不应被剥离 Origin）—— */
     const echo = await page.evaluate(
       `fetch('http://127.0.0.1:${ECHO_PORT}/__echo-origin').then(r => r.json()).catch(e => ({ error: String(e) }))`

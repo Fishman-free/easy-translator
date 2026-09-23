@@ -677,6 +677,16 @@
     function fire(info) {
       var myToken = ++token;
       if (info.kind === 'text') {
+        // 期间滚动过的话，落点下可能已经换了词 —— 触发前再核一次：
+        // 宁可不弹，也不弹一个不在光标下的词（弹错词比不弹更糟）。
+        if (info.staleAt) {
+          var again = wordAtPoint(info.x, info.y);
+          if (!again || String(again.word).toLowerCase() !== String(info.word).toLowerCase()) {
+            if (again) setTarget({ key: 't:' + again.word, kind: 'text', word: again.word, x: info.x, y: info.y });
+            else clearTarget();
+            return;
+          }
+        }
         lookupText(info.word, info, myToken);
       } else {
         lookupImage(info, myToken);
@@ -800,9 +810,15 @@
 
     function onScroll(ev) {
       if (card && card.root && ev.target && ev.target.contains && ev.target.contains(card.root)) return;
-      clearTimer();
-      current = null;
-      hideCard(true);
+      hideCard(true);            // 卡片位置会过时，先收起
+      // 但鼠标多半仍停在同一个词上（滚动时人不会挪鼠标）——重新计时，
+      // 否则「滚一下就再也不弹」，与「停在词上约 5 秒必弹」的承诺相悖。
+      if (current) {
+        current.staleAt = Date.now();
+        scheduleFire(current);
+      } else {
+        clearTimer();
+      }
     }
 
     function onKeyDown(ev) {

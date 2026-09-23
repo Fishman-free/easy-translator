@@ -77,5 +77,24 @@ serendipity</textarea>
     <h2>⑪ 单行输入框 input（应弹窗）</h2>
     <input id="findbox" value="serendipity" style="width:420px;font-size:14px">
   </section>
+
+  <section>
+    <h2>⑫ 可滚动输入框（滚动后同一片区域应取到新露出那一行的词）</h2>
+    <textarea id="scrollbox" rows="3" style="width:420px;font-size:14px;line-height:1.5">alpha
+bravo
+charlie
+delta
+echo
+foxtrot
+golf
+hotel</textarea>
+    <p class="tip">消息框打长了就会滚动 —— 镜像层若拿旧矩形/旧下标，滚动后会取到错行的词。</p>
+  </section>
+
+  <section>
+    <h2>⑬ 自动换行的长句（上缘与下缘应取到不同词）</h2>
+    <textarea id="wrapbox" rows="3" style="width:220px;font-size:14px;line-height:1.5">curiosity rewards the patient mind and a good dictionary always returns serendipity</textarea>
+    <p class="tip">窄框里长句会折行 —— 纵向映射必须按视觉行走。</p>
+  </section>
 </body>
 </html>
