@@ -28,7 +28,9 @@
 
 ### 从商店安装（推荐）
 
-Microsoft Edge 商店：**提交审核中**，上架后这里会补上商店链接。
+**已上架**：[Easy Translator — 悬停查词 · Microsoft Edge 商店](https://microsoftedge.microsoft.com/addons/detail/lnnglikclimokbdcgnpjelpigopdkjeb)
+
+在商店页点「获取」即可；装完打开任意英文网页，把鼠标停在一个单词上约 5 秒就会弹出卡片。
 
 > 打包与提交所需的全部内容（可直接复制的商店文案、逐项权限理由、给审核员的测试说明）
 > 见 [`store/SUBMISSION.md`](store/SUBMISSION.md)；隐私声明见 [`PRIVACY.md`](PRIVACY.md)。
