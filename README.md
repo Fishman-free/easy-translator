@@ -66,19 +66,37 @@ ollama pull qwen2.5vl:3b     # 图片取词（可选），约 3 GB
 浏览器之外的英文也能查：记事本、Word、微信、VS Code、PDF 阅读器……
 `desktop/` 是一个 Windows 伴生程序，**同样的悬停规则、同样的气泡 UI**（白底 + 藏青描边 + 右下角鲸鱼娘）。
 
+### 桌面伴生：一步步来
+
+**① 拿到代码**（已克隆过就跳过）
 ```powershell
-powershell -ExecutionPolicy Bypass -File desktop\run.ps1   # 首次自动装依赖并启动
-powershell -ExecutionPolicy Bypass -File desktop\stop.ps1  # 关闭（与 run.ps1 对称；会二次确认无残留）
-python -m et_desktop --selftest                            # 自检：取词 + 渲染 + 引擎连通 + 设置窗口
+cd ~
+git clone https://github.com/Fishman-free/easy-translator.git
 ```
+（没有 git 就在 GitHub 点 **Code → Download ZIP** 解压到任意目录。）
 
-**关闭桌面伴生**，三种任选：
+**② 启动** —— 用**绝对路径**，不管当前在哪个目录都不会错：
+```powershell
+powershell -ExecutionPolicy Bypass -File "<项目目录>\desktop\run.ps1"
+```
+首次运行会自动建 `.venv` 装依赖（一两分钟），之后打开设置窗口并开始监听。
 
+> ⚠️ **别踩这个坑**：`cd ~/desktop` 进的是 **Windows 桌面**，不是项目里的 `desktop` 子目录，
+> 接着跑 `desktop\run.ps1` 会报 `-File 形式参数的实际参数"desktop\run.ps1"不存在`。
+> **`Desktop`（大写=桌面）≠ 项目里的 `desktop`（小写=子目录）**；用上面的绝对路径写法就不会错。
+
+**③ 设置** —— 启动后弹出的设置窗口就是主界面，四张卡：**通用**（调「悬停触发时长」）、
+**本地小模型**（可选）、**图片取词**（可选）、**数据**（看配置位置）。改完立即生效，
+底部有「测试文本查词」可当场验证。
+
+**④ 关闭** —— 三种任选：
 | 方式 | 操作 |
 |---|---|
 | 界面 | 设置窗口**底部**的「**退出桌面取词**」按钮 |
-| 命令行 | `powershell -ExecutionPolicy Bypass -File desktop\stop.ps1` |
-| 任务管理器 | 结束 `python` 进程（或 `Stop-Process -Id <PID> -Force`） |
+| 命令行 | `powershell -ExecutionPolicy Bypass -File "<项目目录>\desktop\stop.ps1"` |
+| 任务管理器 | 结束 `python` 进程 |
+
+详细的每一步（含设置项说明、排错）见 [`desktop/README.md`](desktop/README.md)。
 
 **它有自己的设置窗口**（就是这个伴生程序的主界面）：与扩展设置页同一套布局和字段
 （通用 / 本地小模型 / 图片取词 / 数据），视觉是同一套鲸鱼娘设计语言——白卡 + 藏青描边，
