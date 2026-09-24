@@ -338,11 +338,55 @@ const pdfHeaderWatcher = (details) => {
     pdfTabs.set(details.tabId, details.url);
     setPdfBadge(details.tabId, true);
     maybeAutoOpenPdf(details.tabId, details.url);
+    maybePromptPdf(details.tabId, details.url);   // 用户要求：主动「发请求」让人打开阅读器
   } else if (pdfTabs.has(details.tabId)) {
     pdfTabs.delete(details.tabId);
     setPdfBadge(details.tabId, false);
   }
 };
+
+/* —— PDF 主动提醒 —— 检测到 PDF 就发一条系统通知，点「用增强阅读器打开」即切换。
+   用户实测反馈：商店版「无法自动识别到我打开了 PDF，然后给我发请求打开 PDF 阅读器」——
+   此前只有徽标和扩展弹窗里的按钮，都是**被动**的。这里补上主动提醒。
+   权限只用 notifications（标准、不触发强警告）；切换用 tabs.update（无需 tabs 权限）。 */
+const pendingNotices = new Map();   // 通知 id -> { tabId, url }
+const pdfPrompted = new Set();      // 每个标签页只提醒一次（同一 PDF 不重复骚扰）
+
+async function maybePromptPdf(tabId, url) {
+  try {
+    const settings = await ETSettings.get();
+    if (settings.pdf.prompt === false) return;    // 可在设置里关掉
+    if (settings.pdf.autoOpen) return;            // 已经自动切换过去了，没必要再提醒
+    if (!/^https?:/i.test(url)) return;
+    if (pdfPrompted.has(tabId)) return;
+    pdfPrompted.add(tabId);
+    const nid = 'et-pdf-' + tabId;
+    pendingNotices.set(nid, { tabId: tabId, url: url });
+    chrome.notifications.create(nid, {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+      title: 'Easy Translator — 检测到 PDF',
+      message: '在增强阅读器里打开就能悬停查词。（也可以点扩展图标里的「用增强阅读器打开」）',
+      buttons: [{ title: '用增强阅读器打开' }],
+      priority: 0
+    }, function () { void chrome.runtime.lastError; });
+  } catch (e) { /* 静默：提醒失败不影响查词 */ }
+}
+
+async function openViewerFromNotice(nid) {
+  const rec = pendingNotices.get(nid);
+  pendingNotices.delete(nid);
+  try { chrome.notifications.clear(nid); } catch (e) { /* 忽略 */ }
+  if (!rec) return;
+  try { await chrome.tabs.update(rec.tabId, { url: viewerUrlFor(rec.url) }); } catch (e) { /* 忽略 */ }
+}
+
+if (chrome.notifications) {
+  chrome.notifications.onButtonClicked.addListener(function (nid) { openViewerFromNotice(nid); });
+  chrome.notifications.onClicked.addListener(function (nid) { openViewerFromNotice(nid); });
+  chrome.notifications.onClosed.addListener(function (nid) { pendingNotices.delete(nid); });
+}
+chrome.tabs.onRemoved.addListener(function (tabId) { pdfPrompted.delete(tabId); });
 
 /** 注册内容类型观察器；未授予「所有网站」权限时会失败，静默降级 */
 function registerPdfWatcher() {
