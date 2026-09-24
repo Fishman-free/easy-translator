@@ -11,7 +11,7 @@
 | Store listing | **Extension logo** | `store/logo-300.png`（300×300，1:1） | **必填（每种语言各一份）** |
 | Store listing | **Description** | 本文第 6 步的中/英文案（**≥250 字符**，短了报错） | **必填（每种语言各一份）** |
 | Privacy | Single Purpose Description | 见 5.1 | **必填** |
-| Privacy | 每个权限的理由（共 7 项：storage / activeTab / webRequest / declarativeNetRequestWithHostAccess / dict.youdao.com / 127.0.0.1+localhost / 可选 &lt;all_urls&gt;） | 见 5.2 | **必填（逐项）** |
+| Privacy | 每个权限的理由（共 8 项：storage / activeTab / webRequest / **notifications**（v1.0.11 新增） / declarativeNetRequestWithHostAccess / dict.youdao.com / 127.0.0.1+localhost / 可选 &lt;all_urls&gt;） | 见 5.2 | **必填（逐项）** |
 | Privacy | Remote code | 选「不使用远程代码」 | **必填** |
 | Privacy | Data usage | 勾选「不收集用户数据」 | **必填** |
 | Privacy | Privacy policy URL | `https://github.com/Fishman-free/easy-translator/blob/main/PRIVACY.md` | **必填** |
@@ -131,6 +131,17 @@ npm run build:store -- --smoke # 额外把「解压后的这份包」真机跑�
 > ② 内置 PDF 阅读器：读取用户打开的 PDF 链接并渲染文本层，以便在 PDF 中悬停取词。
 > 未授权时，网页文本取词与在线词典功能完全正常。
 
+#### 5.2 补充 · notifications（**v1.0.11 新增**，逐字复制进 Partner Center 的权限理由框）
+
+> **notifications**：仅用于「检测到 PDF 时，提醒你可以把它切换到内置增强阅读器」这一件事。
+> 通知的标题与正文都是**固定文案**，不含任何用户数据；点击通知或其按钮只是把当前 PDF 标签页
+> 切换到内置阅读器。该提醒**每个标签页只出现一次**，且可在设置里关闭（`pdf.prompt`）。
+> **不用于**推送、营销、更新提醒或任何其它用途。
+
+> 权限变更提示：这一版（1.0.11）相对 1.0.10 只新增 `notifications` 一个权限，
+> 其余权限与用途完全不变。若 Partner Center 在更新表单里重新索要全部权限理由，
+> 仍可整段复制 5.2 原有内容 + 本条。
+
 ### 5.3 Remote code（远程代码）
 
 > **选择：不使用远程代码（No, I am not using remote code）**
@@ -161,7 +172,7 @@ npm run build:store -- --smoke # 额外把「解压后的这份包」真机跑�
 >
 > 支持的取词场景
 > • 网页文本：精确到字符的取词，微动不打断、词间空白不触发
-> • PDF：内置基于 pdf.js 的阅读器（Edge 自带的 PDF 阅读器是封闭页面，任何扩展都无法注入）
+> • PDF：内置基于 pdf.js 的阅读器（Edge 自带的 PDF 阅读器是封闭页面，任何扩展都无法注入）；检测到 PDF 会发一条通知，点「用增强阅读器打开」即可切换
 > • 图片中的文字：截屏裁剪光标周边区域，交由本机视觉模型识别，识别不到英文则不显示任何弹窗
 >
 > 双引擎
