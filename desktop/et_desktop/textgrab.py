@@ -12,7 +12,11 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
+import time
 import urllib.request
+
+from PIL import Image, ImageDraw
 
 from .lookup import extract_word_at, is_english_word
 
@@ -40,7 +44,7 @@ def word_at_point_uia(x: int, y: int):
         return None, False
 
     node = ctrl
-    for _ in range(6):
+    for _ in range(24):
         if node is None:
             break
         try:
@@ -101,6 +105,12 @@ def _grab_png(x: int, y: int, w: int = 220, h: int = 84) -> bytes | None:
     return buf.getvalue()
 
 
+_OCR_CACHE: dict = {}          # (12px 网格坐标) -> (ts, word或None)；成功缓存数秒、失败缓存 30 秒
+# 游戏守护标记（可选，环境变量 ET_GAMING_FLAG 指定）：文件存在时不发起 OCR，
+# 避免把本地视觉模型重新拉回显存（打游戏时抢显存会卡）。
+GAMING_FLAG = os.environ.get("ET_GAMING_FLAG")
+
+
 def word_at_point_ocr(x: int, y: int, cfg: dict):
     """视觉模型 OCR 兜底（本地 Ollama 之类）。识别不到英文一律返回 None。"""
     cfg = cfg or {}
@@ -108,12 +118,37 @@ def word_at_point_ocr(x: int, y: int, cfg: dict):
     model = cfg.get("visionModel") or ""
     if not base or not model:
         return None
+    if GAMING_FLAG and os.path.exists(GAMING_FLAG):
+        return None                      # 游戏中：静默，不加载视觉模型抢显存
+    # 缓存：驻留期间同一位置不重复打模型；识别不到/服务不可用也不狂拍（负缓存 30s）
+    key = (int(x) // 12, int(y) // 12)
+    now = time.time()
+    hit = _OCR_CACHE.get(key)
+    if hit is not None:
+        ts, w = hit
+        if w and now - ts < 2.5:
+            return w
+        if not w and now - ts < 30:
+            return None
     png = _grab_png(x, y)
     if not png:
         return None
-    prompt = ("这是一张截图的小块，用户鼠标停在图的正中央附近。"
-              "找出该位置附近的英文单词：有就输出 {\"word\":\"单词\"}，"
-              "没有可辨认的英文单词就输出 {\"word\":null}。只输出这一个 JSON，不要解释。")
+    # 关键：ImageGrab 不带鼠标光标，模型在多个词的截图里根本不知道指哪个词
+    #（实测「hello world」指 world 会返回 hello）。在截图中心画一个红叉当鼠标锚点。
+    try:
+        img = Image.open(io.BytesIO(png)).convert("RGB")
+        d = ImageDraw.Draw(img)
+        cx, cy = img.width // 2, img.height // 2
+        d.line([(cx - 6, cy - 6), (cx + 6, cy + 6)], fill=(255, 0, 0), width=2)
+        d.line([(cx - 6, cy + 6), (cx + 6, cy - 6)], fill=(255, 0, 0), width=2)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        png = buf.getvalue()
+    except Exception:
+        pass
+    prompt = ("图中的红色叉号是鼠标位置。输出红叉所指的那个英文单词："
+              "有就输出 {\"word\":\"单词\"}，红叉下面没有英文单词就输出 {\"word\":null}。"
+              "只输出这一个 JSON，不要解释。")
     body = {
         "model": model, "temperature": 0, "max_tokens": 60,
         "messages": [{"role": "user", "content": [
@@ -131,12 +166,16 @@ def word_at_point_ocr(x: int, y: int, cfg: dict):
             raw = json.loads(resp.read().decode("utf-8"))
         content = raw["choices"][0]["message"]["content"]
     except Exception:
+        _OCR_CACHE[key] = (now, None)      # 服务不可用也负缓存，避免狂拍
         return None
     from .lookup import normalize_model, extract_json
     obj = extract_json(content) if isinstance(content, str) else None
     if isinstance(obj, dict) and isinstance(obj.get("word"), str):
         w = obj["word"].strip()
-        return w if is_english_word(w) else None
+        w = w if is_english_word(w) else None
+        _OCR_CACHE[key] = (now, w)
+        return w
+    _OCR_CACHE[key] = (now, None)
     return None
 
 
