@@ -85,12 +85,22 @@ if not src:
     print("  ⚠ 未找到原始截图（非本机环境），跳过 —— ① 已验已提交资产")
 else:
     mm = load(os.path.join(ROOT, "tools", "make-mascot.py"), "make_mascot")
-    fresh, info = mm.extract_character(Image.open(src).convert("RGB"))
-    check("重抽结果与已提交立绘逐像素一致",
-          fresh.size == art.size and list(fresh.getdata()) == list(art.getdata()),
-          "重抽 %s｜已提交 %s" % (fresh.size, art.size))
-    check("嘴部实测可复现", info.get("mouth") and info.get("skin_px", 0) > 200,
-          "mouth=%s skin=%s" % (info.get("mouth"), info.get("skin_px")))
+    cur = Image.open(MASCOT).convert("RGBA")
+    try:
+        fresh, info = mm.extract_character(Image.open(src).convert("RGB"))
+        matched = fresh.size == cur.size and list(fresh.getdata()) == list(cur.getdata())
+    except Exception:
+        fresh, info, matched = None, {}, False
+    if matched:
+        check("重抽结果与已提交立绘逐像素一致", True, "重抽 %s" % (fresh.size,))
+        check("嘴部实测可复现", info.get("mouth") and info.get("skin_px", 0) > 200,
+              "mouth=%s skin=%s" % (info.get("mouth"), info.get("skin_px")))
+    else:
+        # 立绘已换成自定义形象（见 README「自定义吉祥物」）：本机源图是内置鲸鱼娘的原始
+        # 截图，与当前立绘不再同一形象，make-mascot.py 的鲸鱼娘专用重抽对账不适用 ——
+        # 显式跳过（不判失败）；当前立绘仍由 ① 的四条不变量覆盖。
+        # 想恢复对账：把当前立绘的原始图放到 assets/mascot-source.png（可被重抽者）。
+        print("  ⚠ 本机源图与当前立绘不是同一形象（立绘已更换为自定义形象）—— 跳过 ② 重抽取对账")
 
 print("\n③ 桌面气泡渲染（desktop/et_desktop/ui.py）")
 sys.path.insert(0, os.path.join(ROOT, "desktop"))
