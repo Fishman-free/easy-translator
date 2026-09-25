@@ -56,7 +56,14 @@ ollama pull qwen2.5:1.5b     # 文本查词，约 1 GB
 ollama pull qwen2.5vl:3b     # 图片取词（可选），约 3 GB
 ```
 
-在扩展「设置」页勾选 **启用小模型** 即可。
+在扩展「设置」页勾选 **启用小模型** 即可。任何 OpenAI 兼容端点都可用（不限于 Ollama），
+本地查词请求形如：
+
+```bash
+curl http://127.0.0.1:11434/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"qwen2.5:1.5b","messages":[{"role":"user","content":"translate to Chinese: hello"}]}'
+```
 
 两个已处理的坑：
 
@@ -66,7 +73,7 @@ ollama pull qwen2.5vl:3b     # 图片取词（可选），约 3 GB
 ## 整台电脑（桌面伴生）
 
 浏览器之外的英文也能查：记事本、Word、微信、VS Code、PDF 阅读器……
-`desktop/` 是一个 Windows 伴生程序，**同样的悬停规则、同样的气泡 UI**（白底 + 藏青描边 + 右下角鲸鱼娘）。
+`desktop/` 是一个 Windows 伴生程序，**同样的悬停规则、同样的气泡 UI**（白底 + 藏青描边 + 右下角吉祥物）。
 
 ### 桌面伴生：一步步来
 
@@ -98,10 +105,13 @@ powershell -ExecutionPolicy Bypass -File "<项目目录>\desktop\run.ps1"
 | 命令行 | `powershell -ExecutionPolicy Bypass -File "<项目目录>\desktop\stop.ps1"` |
 | 任务管理器 | 结束 `python` 进程 |
 
+**⑤ 静默后台运行（可选）**：加 `--daemon` 参数则只监听、不弹设置窗口（适合放进系统开机自启）；
+可选环境变量 `ET_GAMING_FLAG=<路径>`：该路径下存在标记文件时暂停图片 OCR——把显存让给游戏，游戏结束自动恢复。
+
 详细的每一步（含设置项说明、排错）见 [`desktop/README.md`](desktop/README.md)。
 
 **它有自己的设置窗口**（就是这个伴生程序的主界面）：与扩展设置页同一套布局和字段
-（通用 / 本地小模型 / 图片取词 / 数据），视觉是同一套鲸鱼娘设计语言——白卡 + 藏青描边，
+（通用 / 本地小模型 / 图片取词 / 数据），视觉是同一套吉祥物设计语言——白卡 + 藏青描边，
 标题做成她的对话气泡 + 右上角立绘。字段名与扩展的 `lib/settings-core.js` 一致，
 并有测试逐键比对防漂移。
 取词分三层：**① UIA 辅助功能**（绝大多数应用）→ **② 有文字但不是英文就静默**（中文上绝不弹窗）→ **③ 视觉模型 OCR 兜底**（图片/自绘 UI）。
@@ -143,6 +153,37 @@ Edge 自带的 PDF 阅读器是浏览器内置页面，任何扩展都注入不�
 | 移开鼠标 | 卡片自动收起 |
 | `Esc` | 立即关闭卡片 |
 | 鼠标移到卡片上 | 卡片保持，可点发音 / 复制 / 打开词典页 |
+
+## 自定义吉祥物（换掉默认形象）
+
+气泡右下角的小形象是一张普通 PNG：`assets/mascot.png`（扩展与桌面伴生共用）。
+想换成自己的形象，替换这张图即可：
+
+1. **格式**：PNG，且**背景必须透明** —— 气泡窗口直接用图片的 alpha 通道裁剪形状，
+   不透明的白底会把卡片右下角糊成一个方块
+2. **尺寸**：任意；渲染时按固定宽度等比缩放（`desktop/et_desktop/ui.py` 里的 `MASCOT_W`，默认 58px）
+3. **白色背景的图**：先做「边缘洪泛」抠底 —— 只吃掉连通图片边缘的白背景，
+   角色内部的白色（衬衫、脸）被墨线围住不受影响；再裁到非透明内容边界即可
+4. 覆盖保存后**重启桌面伴生**生效（扩展端重新加载扩展生效）
+
+### 用 AI 生成自己的形象（可选）
+
+任意 OpenAI 兼容的图像生成端点都行（如 gpt-image-2 系中转），支持「参考图 + 提示词」保持角色画风：
+
+```bash
+curl -X POST "$API_BASE/v1/images/generations" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "manga style girl, high ponytail, headphones, sporty jacket, lively smile, white background",
+    "n": 1,
+    "size": "1024x1024",
+    "image": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,<参考图base64>"}}]
+  }'
+```
+
+生成 → 抠底 → 覆盖 `assets/mascot.png` → 重启，三步完成。
 
 ## 开发
 

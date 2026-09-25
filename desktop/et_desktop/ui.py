@@ -259,7 +259,7 @@ class Bubble(tk.Toplevel):
 
     MAX_H_RATIO = 0.72          # 窗口最高占屏高比例
 
-    def __init__(self, master, on_copy=None, on_leave=None):
+    def __init__(self, master, on_copy=None, on_leave=None, on_enter=None, on_click=None):
         super().__init__(master)
         self.overrideredirect(True)
         self.wm_attributes("-topmost", True)
@@ -267,23 +267,22 @@ class Bubble(tk.Toplevel):
         self.wm_attributes("-transparentcolor", key)
         self.on_copy = on_copy
         self.on_leave = on_leave
+        self.on_enter = on_enter
+        self.on_click = on_click
         self._photo = None
         self.canvas = tk.Canvas(self, bd=0, highlightthickness=0, bg=key, cursor="arrow")
         self.sb = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview, width=9)
         self.canvas.configure(yscrollcommand=self.sb.set)
         self.canvas.pack(side="left", fill="both", expand=True)
         self.sb.pack(side="right", fill="y")
-        self.canvas.bind("<Enter>", lambda e: self._cancel_leave())
+        self.canvas.bind("<Enter>", lambda e: self.on_enter and self.on_enter())
         self.canvas.bind("<Leave>", lambda e: self.on_leave and self.on_leave())
-        self.canvas.bind("<Button-1>", lambda e: self.on_copy and self.on_copy())
+        self.canvas.bind("<Button-1>", lambda e: self.on_click and self.on_click())
         self.canvas.bind("<MouseWheel>", self._wheel)
         self.withdraw()
 
     def _wheel(self, e):
         self.canvas.yview_scroll(-int((e.delta or 0) / 120), "units")
-
-    def _cancel_leave(self):
-        pass
 
     def show(self, img: Image.Image, x: int, y: int):
         self._photo = ImageTk.PhotoImage(img.convert("RGB"))

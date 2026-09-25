@@ -105,6 +105,14 @@ def cursor_pos():
         return 0, 0
 
 
+def _lbutton_down():
+    """左键是否正按下（无需焦点/钩子，轮询式全局检测）。"""
+    try:
+        return bool(ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000)
+    except Exception:
+        return False
+
+
 class Watcher(threading.Thread):
     """同词驻留计时：目标变化即重置；微动不打断；取不到词一律静默。"""
 
@@ -116,11 +124,19 @@ class Watcher(threading.Thread):
         self.word = None
         self.anchor = (0, 0)
         self.since = 0.0
+        self._last_seen = 0.0
+        self._dwell = 5.0
         self.shown = False
         self.lock = threading.Lock()
         self.stop_flag = False
 
     def run(self):
+        # UIA 依赖 COM：非主线程必须显式 CoInitialize，否则 uiautomation 每次调用都报
+        # 「尚未调用 CoInitialize」并失败 → 文本取词全废、只能走 OCR 兜底。
+        try:
+            ctypes.windll.ole32.CoInitialize(None)
+        except Exception:
+            pass
         while not self.stop_flag:
             time.sleep(0.12)
             if not self.cfg.get("enabled", True):
@@ -128,21 +144,55 @@ class Watcher(threading.Thread):
                     self.word, self.shown = None, False
                 continue
             x, y = cursor_pos()
-            word, src = textgrab.word_at_point(x, y, self.cfg)
-            if not word:
-                with self.lock:
-                    self.word, self.shown = None, False
-                continue
+            t_poll = time.time()
             with self.lock:
+                if self.shown:
+                    # 快速收起：光标明显移开（>28px，微动不算）或单击 → 立即收起，
+                    # 不等下面那轮可能耗时 1-2 秒的 OCR。钉在气泡上时（pinned）不收起。
+                    pinned = self.panel.is_pinned()
+                    moved = abs(x - self.anchor[0]) > 28 or abs(y - self.anchor[1]) > 28
+                    if not pinned and (moved or _lbutton_down()):
+                        self.shown = False
+                        self.word, self.since = None, t_poll
+                        self._schedule_hide()
+                        continue
+            word, src = textgrab.word_at_point(x, y, self.cfg)
+            now = time.time()
+            with self.lock:
+                if not word:
+                    # 瞬时取不到词（焦点瞬变 / 光标微动到词缝）不立即重置计时；
+                    # 超过 0.8s 宽限期才清空。气泡钉在鼠标下时（pinned）不收起。
+                    if self.word is None or now - self._last_seen > 0.8:
+                        if self.shown and not self.panel.is_pinned():
+                            self.shown = False
+                            self._schedule_hide()
+                        self.word = None
+                    continue
+                self._last_seen = now
                 if word != self.word:
-                    self.word, self.anchor, self.since, self.shown = word, (x, y), time.time(), False
+                    # 鼠标移到了别的词（或从别处回来）：收起旧气泡，重新驻留
+                    if self.shown:
+                        self.shown = False
+                        self._schedule_hide()
+                    # OCR 取词用图片取词自己的驻留时长（与浏览器扩展一致：约 1.4s）
+                    if src == "ocr":
+                        self._dwell = float((self.cfg.get("imageOcr") or {}).get("dwellMs", 1500)) / 1000.0
+                    else:
+                        self._dwell = float(self.cfg.get("dwellMs", 5000)) / 1000.0
+                    self.word, self.anchor, self.since = word, (x, y), now
                     continue
                 if self.shown:
                     continue
-                if time.time() - self.since < float(self.cfg.get("dwellMs", 5000)) / 1000.0:
+                if now - self.since < self._dwell:
                     continue
                 self.shown = True
             threading.Thread(target=self._fire, args=(word, x, y, src), daemon=True).start()
+
+    def _schedule_hide(self):
+        try:
+            self.panel.after(0, self.panel.hide_bubble)
+        except Exception:
+            pass
 
     def _fire(self, word, x, y, src):
         data = lookup.lookup(word, self.cfg)
@@ -202,18 +252,22 @@ def selftest(cfg) -> int:
 class App:
     """主界面 = 设置窗口；查词浮层另有窗口。"""
 
-    def __init__(self, cfg, root, on_quit):
+    def __init__(self, cfg, root, on_quit, headless=False):
         self.root = root
         self.cfg = cfg
         self._mascot = ui.load_mascot(MASCOT)
         self._cache = {}
         self._last_word = ""
-        self.bubble = ui.Bubble(root, on_copy=self._copy, on_leave=self._hide)
-        self.win = settings_ui.SettingsWindow(
-            root, cfg, self._change, on_toggle=self._on_toggle, on_quit=on_quit,
-            mascot=self._mascot, test_text=self._test_text)
-        self.win.on_reset = self._reset
-        self.win.set_status("已启用" if cfg.get("enabled", True) else "已暂停")
+        self._pinned = False
+        self.bubble = ui.Bubble(root, on_copy=self._copy, on_leave=self._on_bubble_leave,
+                                on_enter=self._on_bubble_enter, on_click=self._on_bubble_click)
+        self.win = None
+        if not headless:
+            self.win = settings_ui.SettingsWindow(
+                root, cfg, self._change, on_toggle=self._on_toggle, on_quit=on_quit,
+                mascot=self._mascot, test_text=self._test_text)
+            self.win.on_reset = self._reset
+            self.win.set_status("已启用" if cfg.get("enabled", True) else "已暂停")
         self.watcher = Watcher(cfg, self._render, self)
 
     # Watcher 通过这两个方法回调（panel.after / panel.show_bubble）
@@ -239,6 +293,23 @@ class App:
 
     def _hide(self):
         self.bubble.hide()
+
+    def hide_bubble(self):
+        self._hide()
+
+    def is_pinned(self):
+        return self._pinned
+
+    def _on_bubble_enter(self):
+        self._pinned = True
+
+    def _on_bubble_leave(self):
+        self._pinned = False
+        self._hide()
+
+    def _on_bubble_click(self):
+        self._copy()
+        self._hide()
 
     def _copy(self):
         try:
@@ -270,7 +341,8 @@ class App:
 
     def stop(self):
         self.watcher.stop_flag = True
-        self.win.destroy()
+        if self.win is not None:
+            self.win.destroy()
         self.root.destroy()
 
 
@@ -278,6 +350,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Easy Translator 桌面取词")
     ap.add_argument("--selftest", action="store_true", help="跑一遍自检后退出")
     ap.add_argument("--settings", action="store_true", help="只打开设置窗口，不开始监听")
+    ap.add_argument("--daemon", action="store_true", help="只监听不弹窗口（开机自启用的静默模式）")
     args = ap.parse_args(argv)
     cfg = load_cfg()
     if args.selftest:
@@ -289,7 +362,7 @@ def main(argv=None) -> int:
     root = tk.Tk()
     root.withdraw()
 
-    app = App(cfg, root, lambda: app.stop())
+    app = App(cfg, root, lambda: app.stop(), headless=args.daemon)
     app.warmup(cfg)                      # 预热视觉模型：微信/游戏等无文字界面的取词靠它
     if not args.settings:
         app.watcher.start()
