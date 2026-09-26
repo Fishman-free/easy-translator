@@ -62,6 +62,16 @@ def word_at_point_uia(x: int, y: int):
                 return None, False
             if not got:
                 return None, False
+            # 「点空白处不翻译」：ExpandToEnclosingUnit 会把落点扩展成邻近的词，
+            # 光标在词间空白上时也会抓到旁边的词。校验词的边界矩形确实包含光标，
+            # 不包含 = 光标在空白处 → 当作有文字但没指到词，静默（不走 OCR）。
+            try:
+                rects = rng.GetBoundingRectangles()
+                if rects and not any(r.left - 4 <= x <= r.right + 4 and
+                                     r.top - 4 <= y <= r.bottom + 4 for r in rects):
+                    return None, True
+            except Exception:
+                pass
             # 取回来的可能是「词 + 尾随空格」甚至标点，统一过取词闸门
             found = extract_word_at(got, 0)
             if found["word"]:
