@@ -124,10 +124,15 @@ GAMING_FLAG = os.environ.get("ET_GAMING_FLAG")
 def word_at_point_ocr(x: int, y: int, cfg: dict):
     """视觉模型 OCR 兜底（本地 Ollama 之类）。识别不到英文一律返回 None。"""
     cfg = cfg or {}
-    base = (cfg.get("baseUrl") or "").rstrip("/")
-    model = cfg.get("visionModel") or ""
+    # 配置是嵌套的（model.baseUrl / model.visionModel，与扩展 settings-core 同构）；
+    # 早期这里读的是扁平键，永远取不到 → OCR 兜底被静默短路。扁平键仅作兼容回退。
+    m = cfg.get("model") or {}
+    base = (m.get("baseUrl") or cfg.get("baseUrl") or "").rstrip("/")
+    model = m.get("visionModel") or cfg.get("visionModel") or ""
     if not base or not model:
         return None
+    if (cfg.get("imageOcr") or {}).get("enabled") is False:
+        return None                      # 设置里关掉了图片取词
     if GAMING_FLAG and os.path.exists(GAMING_FLAG):
         return None                      # 游戏中：静默，不加载视觉模型抢显存
     # 缓存：驻留期间同一位置不重复打模型；识别不到/服务不可用也不狂拍（负缓存 30s）
