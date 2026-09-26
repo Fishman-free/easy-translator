@@ -94,6 +94,33 @@ def save_cfg(cfg: dict):
         pass
 
 
+def _enable_dpi_awareness():
+    """声明进程 DPI 感知 —— 必须在任何取坐标之前调用。
+
+    不声明时（150% 缩放的笔记本屏上）：GetCursorPos / UIA 给的是**逻辑坐标**
+    （1707×1067），而 PIL 的 ImageGrab(all_screens=True) 给的是**物理坐标**
+    （2560×1600），两套坐标差 1.5 倍 → OCR 截图中心整体偏移，红叉指到旁边的词，
+    于是「鼠标在 desktop 上却翻译成 et」。声明后三套坐标统一为物理像素；
+    顺带 _scale() 拿到真实 DPI，气泡按 1.5 倍渲染再 1:1 显示，更清晰。
+    """
+    try:
+        import ctypes
+        try:
+            # Windows 10 1703+：per-monitor v2
+            if ctypes.windll.user32.SetProcessDpiAwarenessContext(-4):
+                return
+        except Exception:
+            pass
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)   # PER_MONITOR_DPI_AWARE
+            return
+        except Exception:
+            pass
+        ctypes.windll.user32.SetProcessDPIAware()            # 老系统兜底
+    except Exception:
+        pass
+
+
 def cursor_pos():
     try:
         import ctypes
@@ -184,6 +211,9 @@ class Watcher(threading.Thread):
                 if self.shown:
                     continue
                 if now - self.since < self._dwell:
+                    # 「不动才翻译」：驻留期间光标明显移动（>8px，微抖不算）→ 重新驻留
+                    if abs(x - self.anchor[0]) > 8 or abs(y - self.anchor[1]) > 8:
+                        self.anchor, self.since = (x, y), now
                     continue
                 self.shown = True
             threading.Thread(target=self._fire, args=(word, x, y, src), daemon=True).start()
@@ -347,12 +377,39 @@ class App:
 
 
 def main(argv=None) -> int:
+    _enable_dpi_awareness()      # 必须在取任何坐标 / 建 Tk 之前：统一物理像素坐标系
     ap = argparse.ArgumentParser(description="Easy Translator 桌面取词")
     ap.add_argument("--selftest", action="store_true", help="跑一遍自检后退出")
     ap.add_argument("--settings", action="store_true", help="只打开设置窗口，不开始监听")
     ap.add_argument("--daemon", action="store_true", help="只监听不弹窗口（开机自启用的静默模式）")
     args = ap.parse_args(argv)
     cfg = load_cfg()
+    if args.daemon:
+        # 单实例：已有一个守护在跑就直接退出（自启 + 自愈 + 手动启动可能同时发生）
+        import ctypes as _ct
+        _k32 = _ct.windll.kernel32
+        _mtx = _k32.CreateMutexW(None, False, "EasyTranslatorDaemonMutex")
+        if _mtx and _k32.GetLastError() == 183:   # ERROR_ALREADY_EXISTS
+            return 0
+        # 静默模式没有控制台：把 stderr 重定向到日志文件，崩溃原因可事后查。
+        # （Tk 主循环回调异常、线程异常、excepthook 全部经 stderr 落入此文件）
+        log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                os.pardir, "daemon.log")
+        log_path = os.path.abspath(log_path)
+        try:
+            if os.path.exists(log_path) and os.path.getsize(log_path) > 1_000_000:
+                os.remove(log_path)        # 轮转：太大就从头写
+        except Exception:
+            pass
+        logf = open(log_path, "a", encoding="utf-8")
+        logf.write("\n=== daemon start %s ===\n" % time.strftime("%Y-%m-%d %H:%M:%S"))
+        logf.flush()
+        sys.stderr = logf
+        def _excepthook(t, v, tb):
+            import traceback as _tb
+            _tb.print_exception(t, v, tb, file=logf)
+            logf.flush()
+        sys.excepthook = _excepthook
     if args.selftest:
         return selftest(cfg)
     if tk is None:
