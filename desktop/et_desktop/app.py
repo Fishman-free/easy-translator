@@ -94,6 +94,33 @@ def save_cfg(cfg: dict):
         pass
 
 
+def _enable_dpi_awareness():
+    """声明进程 DPI 感知 —— 必须在任何取坐标之前调用。
+
+    不声明时（150% 缩放的笔记本屏上）：GetCursorPos / UIA 给的是**逻辑坐标**
+    （1707×1067），而 PIL 的 ImageGrab(all_screens=True) 给的是**物理坐标**
+    （2560×1600），两套坐标差 1.5 倍 → OCR 截图中心整体偏移，红叉指到旁边的词，
+    于是「鼠标在 desktop 上却翻译成 et」。声明后三套坐标统一为物理像素；
+    顺带 _scale() 拿到真实 DPI，气泡按 1.5 倍渲染再 1:1 显示，更清晰。
+    """
+    try:
+        import ctypes
+        try:
+            # Windows 10 1703+：per-monitor v2
+            if ctypes.windll.user32.SetProcessDpiAwarenessContext(-4):
+                return
+        except Exception:
+            pass
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)   # PER_MONITOR_DPI_AWARE
+            return
+        except Exception:
+            pass
+        ctypes.windll.user32.SetProcessDPIAware()            # 老系统兜底
+    except Exception:
+        pass
+
+
 def cursor_pos():
     try:
         import ctypes
@@ -350,6 +377,7 @@ class App:
 
 
 def main(argv=None) -> int:
+    _enable_dpi_awareness()      # 必须在取任何坐标 / 建 Tk 之前：统一物理像素坐标系
     ap = argparse.ArgumentParser(description="Easy Translator 桌面取词")
     ap.add_argument("--selftest", action="store_true", help="跑一遍自检后退出")
     ap.add_argument("--settings", action="store_true", help="只打开设置窗口，不开始监听")
