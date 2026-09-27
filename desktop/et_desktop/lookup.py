@@ -18,6 +18,14 @@ CJK = re.compile(r"[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]")
 _TIMEOUT = 6.0
 
 
+# 数学符号（希腊字母／花体·双线体／单字母变量）都在独立模块里，
+# 这里只负责在查词时先问它一句。
+from .mathsymbols import (            # noqa: F401  （is_greek_letter 等供 textgrab 复用）
+    is_greek_letter, is_variant_letter, is_letter_like,
+    lookup_greek, lookup_variant, lookup_math_var,
+)
+
+
 def is_english_word(s) -> bool:
     """全项目唯一的「可查英文单词」判定（与 JS 端 isEnglishWord 同规则）。"""
     if not isinstance(s, str):
@@ -360,6 +368,15 @@ def warmup_vision(cfg: dict) -> bool:
 
 def lookup(word: str, cfg: dict):
     """按引擎顺序取词，返回统一结构或 None。"""
+    g = lookup_greek(word)          # 希腊字母走内置表：不联网、秒出
+    if g:
+        return g
+    v = lookup_variant(word)        # 花体/双线体/哥特体等数学变体字母
+    if v:
+        return v
+    mv = lookup_math_var(word)      # 单个拉丁字母（论文里的变量：F、X、n…）
+    if mv:
+        return mv
     eng = (cfg or {}).get("engine") or "auto"
     if eng in ("auto", "youdao"):
         got = lookup_youdao(word)
