@@ -58,40 +58,53 @@ def main() -> int:
         r = None
         # 窗口可能被最小化（Windows 会报 -32000 附近的坐标，落点根本不在屏幕上），
         # 所以先恢复并摆到固定位置再取样 —— 与「测试目标要先滚入视口」同一类问题。
-        try:
-            import ctypes
-            hwnd = win.NativeWindowHandle
-            u32 = ctypes.windll.user32
-            u32.ShowWindow(hwnd, 9)                         # SW_RESTORE
-            u32.MoveWindow(hwnd, 60, 60, 1100, 700, True)
-            u32.SetForegroundWindow(hwnd)
-        except Exception as e:
-            print("    [注] 摆放窗口失败:", str(e)[:60])
-        time.sleep(0.8)
+        import ctypes
+        u32 = ctypes.windll.user32
+        hwnd = win.NativeWindowHandle
+
+        def place():
+            try:
+                u32.ShowWindow(hwnd, 9)                     # SW_RESTORE
+                u32.MoveWindow(hwnd, 60, 60, 1100, 700, True)
+                u32.SetForegroundWindow(hwnd)
+            except Exception as e:
+                print("    [注] 摆放窗口失败:", str(e)[:60])
+            time.sleep(0.6)
+
+        place()
 
         r = edit.BoundingRectangle
         pattern = edit.GetTextPattern()
         check("文本控件坐标可信（窗口已恢复，不在 -32000 最小化区）", r.left > -10000, r)
         check("文本控件提供 TextPattern", pattern is not None)
 
-        # ② 英文词上取词。行里可能有行距留白（首行尤其），固定 top+N 会扑空：
-        #    在首行范围做小网格扫描，找到第一个真能取到词的点（UIA 快扫，
-        #    命中后再走完整路径确认一次，避免把 OCR 拖进网格）。
+        # ② 英文词上取词。两个实测坑：
+        #    · 行距留白：固定 top+N 会扑空 → 首行小网格扫描（UIA 快扫，命中后走完整路径确认）；
+        #    · 窗口就绪是异步的：偶发首扫全空（实测同一台机器时灵时不灵）→ 有界重试：
+        #      重摆窗口再扫，最多 3 轮；每轮空扫都把现场写进失败详情，而不是只报「没取到」。
         got = None
         tried = []
-        for dy in (6, 10, 14, 18, 22, 26):
-            for frac in (0.10, 0.16, 0.22, 0.30, 0.38, 0.46):
-                x, y = int(r.left + r.width() * frac), int(r.top + dy)
-                w, _saw = textgrab.word_at_point_uia(x, y)
-                if not w:
-                    continue
-                word, src = textgrab.word_at_point(x, y, cfg)
-                tried.append("%d,%d=%r" % (x, y, word))
-                if word:
-                    got = (word, src, x, y)
+        diag = ""
+        for attempt in range(1, 4):
+            place()
+            r = edit.BoundingRectangle
+            for dy in (4, 8, 12, 16, 20, 24, 28):
+                for frac in (0.06, 0.10, 0.16, 0.22, 0.30, 0.38, 0.46):
+                    x, y = int(r.left + r.width() * frac), int(r.top + dy)
+                    w, _saw = textgrab.word_at_point_uia(x, y)
+                    if not w:
+                        continue
+                    word, src = textgrab.word_at_point(x, y, cfg)
+                    tried.append("%d,%d=%r" % (x, y, word))
+                    if word:
+                        got = (word, src, x, y)
+                        break
+                if got:
                     break
             if got:
                 break
+            diag += "第%d轮空扫[rect=%s 前台=%s offscreen=%s]｜" % (
+                attempt, r, u32.GetForegroundWindow() == hwnd, edit.IsOffscreen)
         doc_text = ""
         try:
             doc_text = (pattern.DocumentRange.GetText(60) or "").replace("\r", "⏎")
@@ -99,7 +112,7 @@ def main() -> int:
             pass
         check("光标在英文词上 → 取到词", bool(got),
               (got and "%s（%s @ %d,%d）" % (got[0], got[1], got[2], got[3]))
-              or ("控件矩形 %s｜全文前 60 字 %r｜采样：%s" % (r, doc_text, "；".join(tried))))
+              or ("控件矩形 %s｜全文前 60 字 %r｜采样：%s｜%s" % (r, doc_text, "；".join(tried), diag)))
         if not got:
             return finish()
 
