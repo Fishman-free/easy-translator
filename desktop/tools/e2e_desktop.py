@@ -33,6 +33,7 @@ def check(name, ok, detail=""):
 
 def main() -> int:
     cfg = app_mod.load_cfg()
+    app_mod._enable_dpi_awareness()      # 与 app.main() 一致：统一物理像素坐标系，否则 OCR 截图错位
     print("== 桌面端到端 ==")
 
     text = "The serendipity of a good dictionary rewards curiosity.\n这是一段纯中文的文字，不该取词。\n"
@@ -58,28 +59,38 @@ def main() -> int:
         # 窗口可能被最小化（Windows 会报 -32000 附近的坐标，落点根本不在屏幕上），
         # 所以先恢复并摆到固定位置再取样 —— 与「测试目标要先滚入视口」同一类问题。
         try:
-            import win32gui
+            import ctypes
             hwnd = win.NativeWindowHandle
-            win32gui.ShowWindow(hwnd, 9)                    # SW_RESTORE
-            win32gui.MoveWindow(hwnd, 60, 60, 1100, 700, True)
-            win32gui.SetForegroundWindow(hwnd)
+            u32 = ctypes.windll.user32
+            u32.ShowWindow(hwnd, 9)                         # SW_RESTORE
+            u32.MoveWindow(hwnd, 60, 60, 1100, 700, True)
+            u32.SetForegroundWindow(hwnd)
         except Exception as e:
             print("    [注] 摆放窗口失败:", str(e)[:60])
         time.sleep(0.8)
 
         r = edit.BoundingRectangle
         pattern = edit.GetTextPattern()
+        check("文本控件坐标可信（窗口已恢复，不在 -32000 最小化区）", r.left > -10000, r)
         check("文本控件提供 TextPattern", pattern is not None)
 
-        # ② 英文词上取词
+        # ② 英文词上取词。行里可能有行距留白（首行尤其），固定 top+N 会扑空：
+        #    在首行范围做小网格扫描，找到第一个真能取到词的点（UIA 快扫，
+        #    命中后再走完整路径确认一次，避免把 OCR 拖进网格）。
         got = None
         tried = []
-        for frac in (0.10, 0.16, 0.22, 0.30, 0.38, 0.46):
-            x, y = int(r.left + r.width() * frac), int(r.top + 14)
-            word, src = textgrab.word_at_point(x, y, cfg)
-            tried.append("%d,%d=%r" % (x, y, word))
-            if word:
-                got = (word, src, x, y)
+        for dy in (6, 10, 14, 18, 22, 26):
+            for frac in (0.10, 0.16, 0.22, 0.30, 0.38, 0.46):
+                x, y = int(r.left + r.width() * frac), int(r.top + dy)
+                w, _saw = textgrab.word_at_point_uia(x, y)
+                if not w:
+                    continue
+                word, src = textgrab.word_at_point(x, y, cfg)
+                tried.append("%d,%d=%r" % (x, y, word))
+                if word:
+                    got = (word, src, x, y)
+                    break
+            if got:
                 break
         doc_text = ""
         try:

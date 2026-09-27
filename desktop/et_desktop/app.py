@@ -10,6 +10,7 @@ Easy Translator 桌面伴生：整台电脑的悬停查词。
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import os
 import sys
