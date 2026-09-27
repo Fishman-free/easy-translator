@@ -94,6 +94,33 @@ def save_cfg(cfg: dict):
         pass
 
 
+def _enable_dpi_awareness():
+    """声明进程 DPI 感知 —— 必须在任何取坐标之前调用。
+
+    不声明时（150% 缩放的笔记本屏上）：GetCursorPos / UIA 给的是**逻辑坐标**
+    （1707×1067），而 PIL 的 ImageGrab(all_screens=True) 给的是**物理坐标**
+    （2560×1600），两套坐标差 1.5 倍 → OCR 截图中心整体偏移，红叉指到旁边的词，
+    于是「鼠标在 desktop 上却翻译成 et」。声明后三套坐标统一为物理像素；
+    顺带 _scale() 拿到真实 DPI，气泡按 1.5 倍渲染再 1:1 显示，更清晰。
+    """
+    try:
+        import ctypes
+        try:
+            # Windows 10 1703+：per-monitor v2
+            if ctypes.windll.user32.SetProcessDpiAwarenessContext(-4):
+                return
+        except Exception:
+            pass
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)   # PER_MONITOR_DPI_AWARE
+            return
+        except Exception:
+            pass
+        ctypes.windll.user32.SetProcessDPIAware()            # 老系统兜底
+    except Exception:
+        pass
+
+
 def cursor_pos():
     try:
         import ctypes
@@ -129,6 +156,16 @@ class Watcher(threading.Thread):
         self.shown = False
         self.lock = threading.Lock()
         self.stop_flag = False
+        # 「停稳」追踪：把驻留时长算在光标停下来之后，而不是「识别到词之后」——
+        # OCR 面识别本身要 1~2 秒，若再从识别完开始算 2 秒，总延迟就翻倍了。
+        self._px, self._py = -9999, -9999
+        self._stop_since = 0.0
+        self._mov = 8                  # 判定「移动了」的像素阈值（按屏幕 DPI 缩放）
+        try:
+            sc = ctypes.windll.user32.GetDpiForSystem() / 96.0
+            self._mov = max(8, int(8 * sc))
+        except Exception:
+            pass
 
     def run(self):
         # UIA 依赖 COM：非主线程必须显式 CoInitialize，否则 uiautomation 每次调用都报
@@ -138,20 +175,28 @@ class Watcher(threading.Thread):
         except Exception:
             pass
         while not self.stop_flag:
-            time.sleep(0.12)
+            time.sleep(0.06)           # 轮询间隔：取词结果有缓存，快轮询 = 反应更跟手
             if not self.cfg.get("enabled", True):
                 with self.lock:
                     self.word, self.shown = None, False
                 continue
             x, y = cursor_pos()
             t_poll = time.time()
+            # 光标停稳了吗？（相对上次停稳点移动超过阈值 = 重新计停稳起点）
+            if abs(x - self._px) > self._mov or abs(y - self._py) > self._mov:
+                self._px, self._py, self._stop_since = x, y, t_poll
             with self.lock:
                 if self.shown:
-                    # 快速收起：光标明显移开（>28px，微动不算）或单击 → 立即收起，
-                    # 不等下面那轮可能耗时 1-2 秒的 OCR。钉在气泡上时（pinned）不收起。
+                    # 快速收起：光标明显移开或单击 → 立即收起，不等下面那轮可能耗时 1-2 秒的
+                    # OCR。但只要光标还在气泡上／气泡附近（用户正想过去看或点复制），就不收起。
                     pinned = self.panel.is_pinned()
-                    moved = abs(x - self.anchor[0]) > 28 or abs(y - self.anchor[1]) > 28
-                    if not pinned and (moved or _lbutton_down()):
+                    moved = abs(x - self.anchor[0]) > 32 or abs(y - self.anchor[1]) > 32
+                    near = False
+                    try:
+                        near = self.panel.point_in_bubble(x, y)
+                    except Exception:
+                        near = False
+                    if not pinned and not near and (moved or _lbutton_down()):
                         self.shown = False
                         self.word, self.since = None, t_poll
                         self._schedule_hide()
@@ -174,16 +219,19 @@ class Watcher(threading.Thread):
                     if self.shown:
                         self.shown = False
                         self._schedule_hide()
-                    # OCR 取词用图片取词自己的驻留时长（与浏览器扩展一致：约 1.4s）
+                    # OCR 取词用图片取词自己的驻留时长（与浏览器扩展一致：默认 1.5s）
                     if src == "ocr":
                         self._dwell = float((self.cfg.get("imageOcr") or {}).get("dwellMs", 1500)) / 1000.0
                     else:
                         self._dwell = float(self.cfg.get("dwellMs", 5000)) / 1000.0
-                    self.word, self.anchor, self.since = word, (x, y), now
+                    self.word, self.anchor, self.since = word, (x, y), (self._stop_since or now)
                     continue
                 if self.shown:
                     continue
                 if now - self.since < self._dwell:
+                    # 「不动才翻译」：驻留期间光标明显移动（超阈值，微抖不算）→ 重新驻留
+                    if abs(x - self.anchor[0]) > self._mov or abs(y - self.anchor[1]) > self._mov:
+                        self.anchor, self.since = (x, y), now
                     continue
                 self.shown = True
             threading.Thread(target=self._fire, args=(word, x, y, src), daemon=True).start()
@@ -210,7 +258,7 @@ def selftest(cfg) -> int:
     ok = True
 
     mascot = ui.load_mascot(MASCOT)
-    print(f"  鲸鱼娘立绘: {mascot.size} ✔")
+    print(f"  吉祥物立绘: {mascot.size} ✔")
 
     sample = {"word": "serendipity", "phonetics": {"uk": "/ˌserənˈdɪpəti/", "us": "/ˌserənˈdɪpəti/"},
               "poses": [{"pos": "n.", "meaning": "意外发现珍奇事物的天赋"}],
@@ -347,12 +395,39 @@ class App:
 
 
 def main(argv=None) -> int:
+    _enable_dpi_awareness()      # 必须在取任何坐标 / 建 Tk 之前：统一物理像素坐标系
     ap = argparse.ArgumentParser(description="Easy Translator 桌面取词")
     ap.add_argument("--selftest", action="store_true", help="跑一遍自检后退出")
     ap.add_argument("--settings", action="store_true", help="只打开设置窗口，不开始监听")
     ap.add_argument("--daemon", action="store_true", help="只监听不弹窗口（开机自启用的静默模式）")
     args = ap.parse_args(argv)
     cfg = load_cfg()
+    if args.daemon:
+        # 单实例：已有一个守护在跑就直接退出（自启 + 自愈 + 手动启动可能同时发生）
+        import ctypes as _ct
+        _k32 = _ct.windll.kernel32
+        _mtx = _k32.CreateMutexW(None, False, "EasyTranslatorDaemonMutex")
+        if _mtx and _k32.GetLastError() == 183:   # ERROR_ALREADY_EXISTS
+            return 0
+        # 静默模式没有控制台：把 stderr 重定向到日志文件，崩溃原因可事后查。
+        # （Tk 主循环回调异常、线程异常、excepthook 全部经 stderr 落入此文件）
+        log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                os.pardir, "daemon.log")
+        log_path = os.path.abspath(log_path)
+        try:
+            if os.path.exists(log_path) and os.path.getsize(log_path) > 1_000_000:
+                os.remove(log_path)        # 轮转：太大就从头写
+        except Exception:
+            pass
+        logf = open(log_path, "a", encoding="utf-8")
+        logf.write("\n=== daemon start %s ===\n" % time.strftime("%Y-%m-%d %H:%M:%S"))
+        logf.flush()
+        sys.stderr = logf
+        def _excepthook(t, v, tb):
+            import traceback as _tb
+            _tb.print_exception(t, v, tb, file=logf)
+            logf.flush()
+        sys.excepthook = _excepthook
     if args.selftest:
         return selftest(cfg)
     if tk is None:
