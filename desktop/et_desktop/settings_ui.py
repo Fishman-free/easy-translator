@@ -5,7 +5,7 @@ Easy Translator 桌面伴生 · 设置窗口（就是这个伴生程序的「App
 设计与扩展的设置页保持一致：
   · 布局一一对齐 options/options.html —— 通用 / 本地小模型 / 图片取词 / 数据 四张卡，
     每张卡里是同样的字段、同样的行式（左标签右控件）、同样的说明文字
-  · 视觉用鲸鱼娘那套设计语言：纸面白卡 + 藏青 #1E3264 描边/强调 + 右上角立绘 +
+  · 视觉用吉祥物那套设计语言：纸面白卡 + 藏青 #1E3264 描边/强调 + 右上角立绘 +
     标题做成她的对话气泡（带尾点）—— 与卡片/浮层同一个品牌
 
 配置字段名与 lib/settings-core.js 的 DEFAULTS 一致（dwellMs / examplesCount / model / imageOcr），
@@ -23,7 +23,7 @@ try:
 except Exception:                                    # pragma: no cover
     tk = None
 
-# —— 设计令牌（与 content/card.css 的鲸鱼娘语言一致）——
+# —— 设计令牌（与 content/card.css 的吉祥物语言一致）——
 NAVY = "#1e3264"
 INK = "#26324b"
 MUTED = "#6b7280"

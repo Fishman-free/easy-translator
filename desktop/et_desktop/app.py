@@ -219,7 +219,7 @@ class Watcher(threading.Thread):
                     if self.shown:
                         self.shown = False
                         self._schedule_hide()
-                    # OCR 取词用图片取词自己的驻留时长（与浏览器扩展一致：约 1.4s）
+                    # OCR 取词用图片取词自己的驻留时长（与浏览器扩展一致：默认 1.5s）
                     if src == "ocr":
                         self._dwell = float((self.cfg.get("imageOcr") or {}).get("dwellMs", 1500)) / 1000.0
                     else:
@@ -258,7 +258,7 @@ def selftest(cfg) -> int:
     ok = True
 
     mascot = ui.load_mascot(MASCOT)
-    print(f"  鲸鱼娘立绘: {mascot.size} ✔")
+    print(f"  吉祥物立绘: {mascot.size} ✔")
 
     sample = {"word": "serendipity", "phonetics": {"uk": "/ˌserənˈdɪpəti/", "us": "/ˌserənˈdɪpəti/"},
               "poses": [{"pos": "n.", "meaning": "意外发现珍奇事物的天赋"}],

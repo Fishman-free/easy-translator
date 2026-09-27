@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""桌面浮层：鲸鱼娘对话气泡（与浏览器扩展同一套设计语言）。
+"""桌面浮层：吉祥物对话气泡（与浏览器扩展同一套设计语言）。
 
 透明的实现要点：颜色在白底上正常抗锯齿渲染，但 alpha 用**硬边形状蒙版**重写，
 再配合 tkinter 的 `-transparentcolor` 抠掉窗外区域 —— 圆角边缘因此没有色键毛边。
@@ -156,7 +156,7 @@ def _split_tokens(text: str):
 
 
 def render_card(entry: dict, mascot: Image.Image, scale: float = 1.0) -> Image.Image:
-    """把词条渲染成一张带气泡、尾点与鲸鱼娘的卡片图（含硬边 alpha）。"""
+    """把词条渲染成一张带气泡、尾点与吉祥物的卡片图（含硬边 alpha）。"""
     s = scale
     pad_r = int((MASCOT_W + GUTTER) * s)
     bottom = int(BOTTOM * s)
@@ -263,7 +263,7 @@ def render_card(entry: dict, mascot: Image.Image, scale: float = 1.0) -> Image.I
             y += int(f_small * 1.5)
         y += gap
 
-    # —— 鲸鱼娘：贴在整个对话框的右下角（白底内，不透明） ——
+    # —— 吉祥物：贴在整个对话框的右下角（白底内，不透明） ——
     her = mascot.resize((mw, mh), Image.LANCZOS)
     mx, my = W - mw - int(6 * s), by1 - int(2 * s) - mh
     canvas.paste(her, (mx, my), her)
