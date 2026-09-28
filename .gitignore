@@ -20,3 +20,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+
+# 桌面伴生排障转储（desktop/ocr_dump.on 开关存在时才生成）
+desktop/ocr_dump/
+desktop/ocr_dump.on

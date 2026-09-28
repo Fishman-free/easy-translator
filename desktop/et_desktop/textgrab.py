@@ -373,8 +373,9 @@ def _word_crop_png(x: int, y: int):
     if probe is None:
         return None
     try:
-        px = g.load()
-        w, h = g.size
+        w, h = probe.size          # 曾误写 g.load()/g.size（未定义名被 except 吞掉 →
+        cx, cy = x - org[0], y - org[1]   # 本函数恒返回 None，「按词裁剪」整条失效；
+        #                                   回归测试见 tests/test_word_crop.py）
         cx, cy = x - org[0], y - org[1]
         if not (0 <= cx < w and 0 <= cy < h):
             return None
