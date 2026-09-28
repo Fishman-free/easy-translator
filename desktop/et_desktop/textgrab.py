@@ -171,10 +171,13 @@ OCR_PROMPT = ("图中有一个红色圆圈，圆圈只是鼠标位置的标记�
               "注意：公式、图表、表格、截图里的**英文单词**照常读出来（如 Fraction、Exponent、Bias）；\n"
               "但圈住的是纯符号（+ − × ÷ = ± 括号、上下标、孤立的数字）→ {\"word\":null}。\n"
               "确认是字母后，按下面规则只输出一个 JSON，不要解释：\n"
-              "- 圈住的是英文字母 → 输出它所在的**完整英文单词**，并**保持原样大小写**"
-              "（IEEE、NPU、SEI 不要改成小写）：{\"word\":\"word\"}\n"
-              "- 圈住的是**含连字符（或撇号）的复合词 → 必须整体输出**，不要只输出连字符的一侧："
-              "well-known、Mezzo-piano、state-of-the-art、up-to-date、e-mail、don’t 都要完整给出\n"
+              "- **红圈压在连字符复合词上时，必须输出整个复合词**（含连字符），"
+              "例如 state-of-the-art、well-known、Mezzo-piano、up-to-date、e-mail、don’t。\n"
+              "  ★ 特别注意：红圈可能正好压在这种复合词的**中间小词**上（of、the、to、and）——"
+              "这时**绝不能只输出 of / the / to**，必须连到连字符两侧一起整体输出："
+              "如红圈压在 state-of-the-art 的 of 上 → 输出 {\"word\":\"state-of-the-art\"}\n"
+              "- 圈住的是英文字母（且不属于上述连字符复合词）→ 输出它所在的**完整英文单词**，"
+              "并**保持原样大小写**（IEEE、NPU、SEI 不要改成小写）：{\"word\":\"word\"}\n"
               "- 圈住的是一个孤立的单个字母（数学变量，如 F X n，也可能写成花体 ℱ ℒ 𝒩）"
               "→ 输出这个字母本身：{\"word\":\"F\"}\n"
               "- 圈住的是希腊字母 → 原样输出该字母（如 Ω α λ β）：{\"word\":\"Ω\"}\n"
@@ -198,6 +201,13 @@ def _grab_png(x: int, y: int, w: int = 140, h: int = 56) -> bytes | None:
 
 
 _OCR_CACHE: dict = {}          # (格, ) → (时间戳, 单词或 None)：短期去重
+_LAST_CROP: dict = {}          # 最近一次按词裁剪量到的墨迹段宽度/行高（复合词兜底用）
+# 定向重问用的提示词：只读到连字符复合词的「内部小词」（of / the / to）时再用一次
+COMPOUND_PROMPT = ("图中有一个红色圆圈（鼠标标记，不是字符）。它可能压在一个**由连字符连接的复合词**"
+                   "中间（例如 state-of-the-art 里的 of，或 well-known 里的 known）。\n"
+                   "要求：如果确实是这样，输出**整个连字符复合词**（如 state-of-the-art）；"
+                   "若图中并没有连字符复合词，就照常输出圆圈圈住的那个英文单词。\n"
+                   "只输出一个 JSON：{\"word\":\"...\"}；没有可读的英文单词则 {\"word\":null}。")
 _POS_SPOT = None               # (x, y, word)：识别成功的位置（光标没移开就复用）
 _FAIL_SPOT = None              # (x, y)：识别失败的位置（光标没移开就不重试）
 # 游戏守护标记（可选，环境变量 ET_GAMING_FLAG 指定）：文件存在时不发起 OCR，
@@ -376,8 +386,8 @@ def _word_crop_png(x: int, y: int):
         return None
     try:
         w, h = probe.size          # 曾误写 g.load()/g.size（未定义名被 except 吞掉 →
-        cx, cy = x - org[0], y - org[1]   # 本函数恒返回 None，「按词裁剪」整条失效；
-        #                                   回归测试见 tests/test_word_crop.py）
+        #                           本函数恒返回 None，「按词裁剪」整条失效；
+        #                           回归测试见 tests/test_word_crop.py）
         cx, cy = x - org[0], y - org[1]
         if not (0 <= cx < w and 0 <= cy < h):
             return None
@@ -453,6 +463,8 @@ def _word_crop_png(x: int, y: int):
                   outline=(255, 0, 0), width=2)
         buf = io.BytesIO()
         crop.save(buf, format="PNG")
+        _LAST_CROP.clear()
+        _LAST_CROP.update({"run_px": x1 - x0, "lh": lh})   # 复合词兜底判断用
         _trace(f"({x},{y}) 按词裁剪：行高 {lh}px → {crop.width}x{crop.height}")
         return buf.getvalue()
     except Exception:
@@ -493,6 +505,57 @@ def _zoom_crop_if_large(x: int, y: int, png_std: bytes) -> bytes:
         return buf.getvalue()
     except Exception:
         return png_std
+
+
+# 常见「内部小词」：模型容易只报红圈压着的这一个，而漏掉它所属的连字符复合词
+_INNER_WORDS = {"of", "the", "to", "and", "for", "in", "on", "at", "by", "is", "as", "it",
+                "or", "be", "an", "we", "he", "do", "so", "up", "out", "all", "not", "no"}
+
+
+def need_compound_retry(word: str, run_px: int, lh: int) -> bool:
+    """是否要为「只读到连字符复合词的一部分」定向重问一次。
+
+    两种情形（都要「墨迹段明显比这个词宽」才算，否则模型读的就是整个词）：
+      · 答案是 of / the / to 这类内部小词 —— 它很可能只是复合词中间的一截；
+      · 答案本身含连字符但比墨迹段窄很多 —— 例如 `of-the-art` 这种残段。
+    好处：普通正文里悬停 the/of 时墨迹段≈词宽，不会触发（不白花一次推理）。
+    """
+    if not word or not lh:
+        return False
+    expect = max(1, len(word)) * 0.55 * lh
+    if word.lower() in _INNER_WORDS and run_px > max(60, int(2.5 * expect)):
+        return True
+    if ("-" in word or "–" in word) and run_px > int(1.3 * expect):
+        return True
+    return False
+
+
+def _ask_word(png: bytes, base: str, model: str, cfg: dict, prompt: str):
+    """用指定提示词问一次视觉模型，返回解析出的单词字符串（失败/没有返回 None）。"""
+    body = {"model": model, "temperature": 0, "max_tokens": 60,
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,"
+                                                    + base64.b64encode(png).decode()}},
+            ]}]}
+    try:
+        req = urllib.request.Request(
+            base + "/chat/completions", data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer " + (cfg.get("apiKey") or "none")})
+        with urllib.request.urlopen(req, timeout=float(cfg.get("visionTimeoutSec") or 90.0)) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+        content = raw["choices"][0]["message"]["content"]
+    except Exception:
+        return None
+    from .lookup import extract_json
+    obj = extract_json(content) if isinstance(content, str) else None
+    if isinstance(obj, dict) and isinstance(obj.get("word"), str):
+        w = obj["word"].strip().strip("`\"' \t.,;:!?()[]{}").strip()
+        if w.lower() in ("null", "none", "nan", "无", "没有", "—", "-"):
+            return None
+        return w or None
+    return None
 
 
 def word_at_point_ocr(x: int, y: int, cfg: dict):
@@ -599,6 +662,17 @@ def word_at_point_ocr(x: int, y: int, cfg: dict):
         # **单个普通英文字母不收** —— 图片里单字母遍地都是，而且「整词被裁成一个字母」
         # 的碎片会冒充它，误弹远多于收益。
         w = w if accept_ocr_word(w) else None
+        # 复合词兜底：模型可能只报了红圈压着的那个「内部小词」（of / the / to…），
+        # 而按词裁剪量出的墨迹段明显比这个词宽 → 说明还有连字符连着其他部分 → 定向再问一次。
+        # 阈值取得保守：普通正文里悬停 the/of 时墨迹段≈词宽，不会触发（不浪费一次推理）。
+        if w and need_compound_retry(w, _LAST_CROP.get("run_px") or 0, _LAST_CROP.get("lh") or 0):
+            w2 = _ask_word(png, base, model, cfg, COMPOUND_PROMPT)
+            # 只接受「确实含连字符的更长答案」——避免重问把答案换成图中别处的复合词
+            if w2 and ("-" in w2 or "–" in w2) and len(w2) > len(w) and accept_ocr_word(w2):
+                _dump_ocr(None, x, y, "复合词兜底: %r → %r (墨迹段 %dpx/行高 %d)"
+                          % (w, w2, _LAST_CROP.get("run_px") or 0, _LAST_CROP.get("lh") or 0))
+                _trace(f"({x},{y}) 复合词兜底：{w!r} → {w2!r}")
+                w = w2
         if not w:
             _dump_ocr(None, x, y, "reject 闸门不认: %r (english=%s, letter_like=%s)"
                       % (w0, is_english_word(w0), is_letter_like(w0)))
