@@ -141,6 +141,14 @@ def _lbutton_down():
         return False
 
 
+def _elog(msg):
+    """把「弹卡片 / 无释义 / 显示失败」这类关键动作写进 daemon.log（stderr 已重定向到那里）。"""
+    try:
+        print("[%s] %s" % (time.strftime("%H:%M:%S"), msg), file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
 class Watcher(threading.Thread):
     """同词驻留计时：目标变化即重置；微动不打断；取不到词一律静默。"""
 
@@ -230,9 +238,10 @@ class Watcher(threading.Thread):
                 if self.shown:
                     continue
                 if now - self.since < self._dwell:
-                    # 「不动才翻译」：驻留期间光标明显移动（超阈值，微抖不算）→ 重新驻留
-                    if abs(x - self.anchor[0]) > self._mov or abs(y - self.anchor[1]) > self._mov:
-                        self.anchor, self.since = (x, y), now
+                    # 「不动才翻译」的计时重置**只由「词变了」触发**（见上面 word != self.word 分支）。
+                    # 这里曾再按 12px 位移清零计时 —— 实测那是致命的：大字号（公式/幻灯片）下
+                    # 鼠标"停住"时手抖 12px 太常见，计时被反复清零，卡片永远等不到
+                    #（用户报「截屏/公式里的英文识别不了」，其实词早就读到了）。
                     continue
                 self.shown = True
             threading.Thread(target=self._fire, args=(word, x, y, src), daemon=True).start()
@@ -246,12 +255,14 @@ class Watcher(threading.Thread):
     def _fire(self, word, x, y, src):
         data = lookup.lookup(word, self.cfg)
         if not lookup.has_definition(data):
+            _elog("无释义不弹: %r (src=%s, 引擎=%s)" % (word, src, (data or {}).get("source", "-")))
             return        # 查不到、或只有音标没有释义 → 静默，不弹空壳
         try:
             img = self.render(data)
             self.panel.after(0, lambda: self.panel.show_bubble(img, x, y, word))
-        except Exception:
-            pass
+            _elog("弹卡片: %r ← %s (来源 %s)" % (word, src, (data or {}).get("source", "-")))
+        except Exception as exc:
+            _elog("渲染/显示失败: %r (%r)" % (word, exc))
 
 
 def selftest(cfg) -> int:
