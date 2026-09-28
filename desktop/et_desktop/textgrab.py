@@ -256,9 +256,24 @@ COMPOUND_PROMPT = ("图中有一个红色圆圈（鼠标标记，不是字符）
                    "只输出一个 JSON：{\"word\":\"...\"}；没有可读的英文单词则 {\"word\":null}。")
 _POS_SPOT = None               # (x, y, word)：识别成功的位置（光标没移开就复用）
 _FAIL_SPOT = None              # (x, y)：识别失败的位置（光标没移开就不重试）
-# 游戏守护标记（可选，环境变量 ET_GAMING_FLAG 指定）：文件存在时不发起 OCR，
-# 避免把本地视觉模型重新拉回显存（打游戏时抢显存会卡）。
+# 游戏守护标记（游戏守护写文件）：文件存在时**整条取词链停工** —— 不查 UIA、
+# 不打 OCR、不弹卡片，避免游戏期间被抢 CPU/显存。
+# 优先用环境变量（start_daemon.vbs 会设），否则退回守护目录旁的 gaming.flag：
+# 无论进程是怎么被拉起来的（vbs / 手动 / 自愈重启）都能生效。
 GAMING_FLAG = os.environ.get("ET_GAMING_FLAG")
+GAMING_FLAG_LOCAL = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 os.pardir, "gaming.flag")
+
+
+def gaming_now() -> bool:
+    """现在是否在打游戏（游戏守护写了标记文件）。两条路径任一命中即视为游戏中。"""
+    for p in (os.environ.get("ET_GAMING_FLAG"), GAMING_FLAG, GAMING_FLAG_LOCAL):
+        try:
+            if p and os.path.exists(p):
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def _has_ink(img, half_w: int = 12, half_h: int = 14) -> bool:
@@ -625,7 +640,7 @@ def word_at_point_ocr(x: int, y: int, cfg: dict):
         return None
     if (cfg.get("imageOcr") or {}).get("enabled") is False:
         return None                      # 设置里关掉了图片取词
-    if GAMING_FLAG and os.path.exists(GAMING_FLAG):
+    if gaming_now():
         return None                      # 游戏中：静默，不加载视觉模型抢显存
     # 缓存：驻留期间同一位置不重复打模型；识别不到/服务不可用也不狂拍（负缓存 30s）
     key = (int(x) // 12, int(y) // 12)

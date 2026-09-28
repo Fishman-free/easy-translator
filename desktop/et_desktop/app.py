@@ -188,6 +188,17 @@ class Watcher(threading.Thread):
                 with self.lock:
                     self.word, self.shown = None, False
                 continue
+            if textgrab.gaming_now():
+                # 打游戏：整条取词链停工。UIA 单次要走一遍控件树（实测 ~500ms），
+                # 而这里是 60ms 轮询一次 —— 那才是游戏期间的主要开销；OCR 另外还抢显存。
+                # 收起已有卡片，之后约 1 秒探一次（只查文件是否存在，几乎不占 CPU）。
+                with self.lock:
+                    if self.shown:
+                        self.shown = False
+                        self._schedule_hide()
+                    self.word = None
+                time.sleep(0.9)
+                continue
             x, y = cursor_pos()
             t_poll = time.time()
             # 光标停稳了吗？（相对上次停稳点移动超过阈值 = 重新计停稳起点）
