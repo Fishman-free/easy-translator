@@ -24,6 +24,7 @@ from .mathsymbols import (            # noqa: F401  （is_greek_letter 等供 te
     is_greek_letter, is_variant_letter, is_letter_like,
     lookup_greek, lookup_variant, lookup_math_var,
 )
+from .terms import lookup_term          # 特称表：IEEE / IBM / CV / SEI 这类（内置，不联网）
 
 
 def is_english_word(s) -> bool:
@@ -178,14 +179,46 @@ def lookup_youdao(word: str):
     return normalize_youdao(raw, word)
 
 
+def accept_ocr_word(w) -> bool:
+    """OCR 结果的取词闸门（图片/PDF 路径专用；文字路径另有规则）。
+
+    规则（按用户要求）：
+      * 普通英文单词（≥2 字母）→ 收
+      * 希腊字母 / 花体·双线体等数学变体（单字符）→ 收（读论文要用）
+      * **单个普通英文字母（F、n、x…）→ 不收**：图片里单字母到处都是，
+        而且「整词被裁成一个字母」的碎片会冒充它，误弹远多于收益。
+      * 中文、数字、标点、空 → 不收
+    """
+    if not isinstance(w, str):
+        return False
+    # 去掉两端标点/空白（模型常把词尾带成 "Fraction." / "`n`"）；中间的 ' 与 - 保留（don't / e-mail）
+    w = w.strip().strip("`\"' \t.,;:!?()[]{}")
+    if not w or CJK.search(w):
+        return False
+    if w.lower() in ("null", "none", "nan", "无", "没有"):
+        return False               # 模型把「没有」写成字符串 null / None 的情况
+    if is_letter_like(w):          # 希腊字母 / 花体·双线体等（单字符）
+        return True
+    if len(w) == 1:
+        return False               # 单个普通字母：不出卡片
+    return is_english_word(w)
+
+
 def build_model_prompt(word: str) -> str:
-    return "\n".join([
+    lines = [
         f"请解释英文单词「{word}」，输出一个 JSON 对象，只要这个对象，不要任何其他文字。",
         '格式示例：{"word":"serendipity","uk":"/ˌserənˈdɪpəti/","us":"/ˌserənˈdɪpəti/",'
         '"poses":[{"pos":"n.","meaning":"意外发现珍奇事物的天赋"}],'
         '"examples":[{"en":"...", "zh":"..."}]}',
         "要求：poses 的 meaning 用中文；examples 给 1-2 句英文例句并附中文翻译；没有的字段留空数组。",
-    ])
+    ]
+    # 全大写短词基本是缩写（IEEE、NPU、SEI…），普通词典和模型都容易猜歪 → 明确要求展开全称
+    if isinstance(word, str) and 2 <= len(word.strip()) <= 8 and word.strip().isupper():
+        lines.append(
+            f"注意：「{word}」是全大写缩写。poses 第一项 pos 用「全称」、meaning 写英文全称原词；"
+            "第二项 pos 用「说明」、meaning 写中文译名 + 所属领域与常见含义（若跨领域含义不同，请都列出）。"
+        )
+    return "\n".join(lines)
 
 
 def extract_json(text):
@@ -319,8 +352,11 @@ def normalize_model(text, fallback_word: str = ""):
 
 def lookup_model(word: str, cfg: dict):
     """小模型查词。cfg: {baseUrl, apiKey, textModel}。不可用返回 None。"""
-    base = (cfg.get("baseUrl") or "").rstrip("/")
-    model = cfg.get("textModel") or ""
+    # 配置是嵌套的（model.baseUrl / model.textModel，与扩展 settings-core 同构）；
+    # 早期这里读扁平键 → 永远取不到 → 本地模型兜底整条是死路。扁平键仅作兼容回退。
+    m = cfg.get("model") or {}
+    base = (m.get("baseUrl") or cfg.get("baseUrl") or "").rstrip("/")
+    model = m.get("textModel") or cfg.get("textModel") or ""
     if not base or not model:
         return None
     try:
@@ -368,6 +404,9 @@ def warmup_vision(cfg: dict) -> bool:
 
 def lookup(word: str, cfg: dict):
     """按引擎顺序取词，返回统一结构或 None。"""
+    tm = lookup_term(word)          # 特称表：IEEE / IBM / CV / SEI…（内置，秒出，最优先）
+    if tm:
+        return tm
     g = lookup_greek(word)          # 希腊字母走内置表：不联网、秒出
     if g:
         return g
