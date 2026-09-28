@@ -10,7 +10,6 @@ Easy Translator 桌面伴生：整台电脑的悬停查词。
 from __future__ import annotations
 
 import argparse
-import ctypes
 import json
 import os
 import sys
@@ -189,6 +188,17 @@ class Watcher(threading.Thread):
                 with self.lock:
                     self.word, self.shown = None, False
                 continue
+            if textgrab.gaming_now():
+                # 打游戏：整条取词链停工。UIA 单次要走一遍控件树（实测 ~500ms），
+                # 而这里是 60ms 轮询一次 —— 那才是游戏期间的主要开销；OCR 另外还抢显存。
+                # 收起已有卡片，之后约 1 秒探一次（只查文件是否存在，几乎不占 CPU）。
+                with self.lock:
+                    if self.shown:
+                        self.shown = False
+                        self._schedule_hide()
+                    self.word = None
+                time.sleep(0.9)
+                continue
             x, y = cursor_pos()
             t_poll = time.time()
             # 光标停稳了吗？（相对上次停稳点移动超过阈值 = 重新计停稳起点）
@@ -319,6 +329,7 @@ class App:
         self._cache = {}
         self._last_word = ""
         self._pinned = False
+        self._bubble_at = None            # 气泡弹出时的光标位置（收起看门狗用）
         self.bubble = ui.Bubble(root, on_copy=self._copy, on_leave=self._on_bubble_leave,
                                 on_enter=self._on_bubble_enter, on_click=self._on_bubble_click)
         self.win = None
@@ -329,6 +340,11 @@ class App:
             self.win.on_reset = self._reset
             self.win.set_status("已启用" if cfg.get("enabled", True) else "已暂停")
         self.watcher = Watcher(cfg, self._render, self)
+        # 收起看门狗：跑在 Tk 主线程，不依赖 watcher 的循环（OCR 期间 watcher 是阻塞的）
+        try:
+            self.root.after(120, self._hide_tick)
+        except Exception:
+            pass
 
     # Watcher 通过这两个方法回调（panel.after / panel.show_bubble）
     def after(self, ms, fn):
@@ -336,7 +352,39 @@ class App:
 
     def show_bubble(self, img, x, y, word):
         self._last_word = word
+        self._bubble_at = (x, y)
         self.bubble.show(img, x, y)
+
+    def _hide_tick(self):
+        """UI 线程的收起看门狗（每 120ms 一次）。
+
+        为什么需要它：收起判断原来只写在 watcher 循环里，而取词走 OCR 时 watcher 会**阻塞
+        1–3 秒**（模型冷启动更久），这期间它没法检查「鼠标移开了没有」→ 卡片迟迟不收；
+        更糟的是鼠标一旦「进过」气泡就置 `_pinned=True`，而解除只靠 Tk 的 `<Leave>` 事件，
+        该事件在「气泡在光标下弹出」「快速划过」「窗口重画」等情况下会漏 →
+        `_pinned` 永远是 True，收起条件里的 `not pinned` 永不成立 → 卡片再也收不起来。
+        这个 tick 跑在 Tk 主线程，不受上述两件事影响，且会把「光标已不在气泡上」的
+        陈旧钉住状态当作安全网解除掉。
+        """
+        try:
+            if getattr(self.bubble, "_rect", None):
+                x, y = cursor_pos()
+                try:
+                    inside = self.bubble.point_in_bubble(x, y)      # 还在气泡上/边上 → 不收
+                except Exception:
+                    inside = False
+                if not inside:
+                    if self._pinned:
+                        self._pinned = False          # 陈旧钉住：光标已经不在气泡上了
+                    ax, ay = self._bubble_at or (x, y)
+                    if abs(x - ax) > 32 or abs(y - ay) > 32 or _lbutton_down():
+                        self.hide_bubble()
+        except Exception:
+            pass
+        try:
+            self.root.after(120, self._hide_tick)
+        except Exception:
+            pass
 
     def _render(self, data):
         key = (data.get("word"), tuple(sorted((p.get("pos"), p.get("meaning")) for p in data.get("poses") or [])))

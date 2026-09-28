@@ -24,3 +24,6 @@ Thumbs.db
 # 桌面伴生排障转储（desktop/ocr_dump.on 开关存在时才生成）
 desktop/ocr_dump/
 desktop/ocr_dump.on
+
+# 游戏标记：游戏守护写入，取词守护读到就整条链停工（不该提交）
+desktop/gaming.flag
