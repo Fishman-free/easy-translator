@@ -26,6 +26,9 @@ except Exception:                     # 未装依赖时仍可只用 OCR 兜底
     auto = None
 
 TEXTUNIT_WORD = 2                     # IUIAutomation TextUnit_Word
+TEXTUNIT_LINE = 3                     # IUIAutomation TextUnit_Line
+TEXT_RANGE_START = 0                  # TextPatternRangeEndpoint_Start
+TEXT_RANGE_END = 1                    # TextPatternRangeEndpoint_End
 
 # UIA 走树单次要 ~500ms（实测 513ms），而守护每轮轮询都要调一次——驻留 2 秒 = 十几轮，
 # 光这一项就吃掉 2 秒以上。按 12px 网格缓存一小段时间，驻留期间的轮询变成内存命中。
@@ -49,6 +52,45 @@ def word_at_point_uia(x: int, y: int):
 
 
 _LAST_UIA_REASON = ""          # 最近一次 UIA 判定的原因（只写进轨迹日志，便于定位）
+
+
+def _uia_widen(rng, word: str) -> str:
+    """在 UIA 给出的**整行文字**里，把这个词向左右扩展到非词字符（空白/标点）为止。
+
+    为什么必需：`ExpandToEnclosingUnit(Word)` 出来的是什么，**由应用程序自己决定** ——
+    实测（用户机器上的 daemon 日志）PDF 阅读器把 `state-of-the-art` 报成 `of`、
+    把 `trill` 报成 `tr`、把 `Mezzo-piano` 报成 `Mezzo`。只信它给的词，就会弹出
+    半截词（用户报的正是这个）。
+
+    行文字（TextUnit_Line）是可靠的，所以：取整行文字 + 词在行内的字符偏移，
+    再用 extract_word_at（跨连字符、遇空白停）重新抠一次整词。任何一步失败都原样返回。
+    """
+    if not word:
+        return word
+    try:
+        line = rng.Clone()
+        line.ExpandToEnclosingUnit(TEXTUNIT_LINE)
+        prefix = line.Clone()
+        # 把「整行」的终点挪到「词」的起点 → 它的文本长度就是词在行内的字符偏移
+        prefix.MoveEndpointByRange(TEXT_RANGE_END, rng, TEXT_RANGE_START)
+        off = len(prefix.GetText(8192) or "")
+        text = line.GetText(8192) or ""
+    except Exception:
+        return word
+    if not text:
+        return word
+    if not (0 <= off < len(text)):
+        off = text.find(word)                 # 兜底：退化成字符串查找
+        if off < 0:
+            return word
+    # 只在词附近 ±64 字符的窗口里扩，避免把远处的东西连进来
+    lo = max(0, off - 64)
+    seg = text[lo: off + len(word) + 64]
+    got = (extract_word_at(seg, off - lo) or {}).get("word")
+    # 只接受「以原词为一部分的更长结果」——偏移若算错，绝不能把词换成行里另一个词
+    if got and len(got) > len(word) and word.strip().lower() in got.lower():
+        return got
+    return word
 
 
 def _word_at_point_uia_uncached(x: int, y: int):
@@ -123,6 +165,10 @@ def _word_at_point_uia_uncached(x: int, y: int):
                     f"{int(inside_rect.bottom - inside_rect.top)})→转OCR")
                 return None, False
             # 取回来的可能是「词 + 尾随空格」甚至标点，统一过取词闸门
+            wide = _uia_widen(rng, got)
+            if wide != got:
+                _LAST_UIA_REASON = f"UIA 词位扩展:{got[:16].strip()}→{wide[:28]}"
+                got = wide
             found = extract_word_at(got, 0)
             if found["word"]:
                 return found["word"], True
