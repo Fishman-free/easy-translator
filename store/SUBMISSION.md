@@ -1,6 +1,6 @@
 # Microsoft Edge 商店上架清单（Partner Center）
 
-本文把能在本地准备好的**全部内容**都写好了：你只需要登录 Partner Center、上传 `store/easy-translator-1.0.0.zip`、把下面标注「复制」的文本贴进去。
+本文把能在本地准备好的**全部内容**都写好了：你只需要登录 Partner Center、上传 `store/easy-translator-1.0.12.zip`、把下面标注「复制」的文本贴进去。
 
 ---
 
@@ -71,7 +71,7 @@ npm run build:store -- --smoke # 额外把「解压后的这份包」真机跑�
 ## 第 2 步：新建扩展 → 上传包
 
 1. Partner Center → **Microsoft Edge** → **New extension**
-2. 上传 `store/easy-translator-1.0.0.zip`
+2. 上传 `store/easy-translator-1.0.12.zip`
 3. 包里的 `manifest.json` 会自动带出**扩展名称**与**简短描述**（就是商店列表顶部那两行），
    改了之后需要**重新打包上传**
 
